@@ -1,0 +1,19 @@
+services:
+  - type: web
+    runtime: node
+    name: smart-translate-xdu
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        sync: false
+      - key: OPENAI_MODEL_FLASH
+        sync: false
+      - key: OPENAI_MODEL_PRO
+        sync: false
