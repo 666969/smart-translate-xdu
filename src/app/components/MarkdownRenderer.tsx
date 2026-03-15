@@ -11,16 +11,28 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
+function normalizeLatexContent(content: string) {
+  return content
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
+    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
+    .replace(
+      /(?<!\$)(\\(?:forall|exists)\s+\\?[A-Za-z]+(?:_[0-9A-Za-z{}]+)?(?:\s*,\s*\\?[A-Za-z]+(?:_[0-9A-Za-z{}]+)?)?\s+\\in\s+\\mathbb\{[A-Za-z]+\})(?!\$)/gu,
+      (match) => `$${match.trim()}$`
+    )
+    .replace(
+      /(?<!\$)(\\(?:alpha|beta|gamma|theta|phi|omega|sin|cos|tan|ln|log|int|sum)[^，。,；;\n]*(?:=|\\in)[^，。,；;\n]*)(?!\$)/gu,
+      (match) => `$${match.trim()}$`
+    );
+}
+
 export default function MarkdownRenderer({
   content,
   preserveLineBreaks = false,
   className = "",
 }: MarkdownRendererProps) {
-  // 预处理内容，解决大模型有时候输出的 LaTeX 公式符号不标准的问题
-  // 例如大模型有时输出 \[ \\int \] 作为独立块，或者 \( x \) 作为行内公式
-  const processedContent = content
-    .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$') // 将 \[ ... \] 转换为 $$ ... $$ (需要多加 $ 转义)
-    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');   // 将 \( ... \) 转换为 $ ... $
+  // 预处理内容，解决大模型漏掉 $...$、混入控制字符、或输出不标准 LaTeX 的情况。
+  const processedContent = normalizeLatexContent(content);
 
   if (preserveLineBreaks) {
     const lines = processedContent.split(/\r?\n/);
