@@ -171,10 +171,11 @@ function getLiveSystemPrompt() {
 function getSnippetTranslationSystemPrompt(hasImageInput: boolean) {
   return `${STRICT_JSON_PREFIX}
 
-你正在执行 Snippet（片段速译）任务中的“精准翻译 + 关键词提取”子任务。
+你正在执行完整的 Snippet（片段速译）任务。
 你必须返回且只能返回一个合法 JSON 对象，结构如下：
 {
   "translation": "...",
+  "analysis": "...",
   "keywords": "...",
   "keyword_items": [
     {
@@ -200,31 +201,15 @@ function getSnippetTranslationSystemPrompt(hasImageInput: boolean) {
 1. "translation" 必须是完整中文翻译文本，保持原图的段落、换行、层级、编号、列表和公式顺序。
 2. 你只翻译自然语言文本。对于公式、变量、函数名、微积分表达式、矩阵、向量、图号、元件符号、电路图图形、坐标轴、波形、表格线和纯符号结构，请不要改写成中文句子。
 3. 所有数学公式、数学符号、变量、上下标、希腊字母、积分、微分、极限、求和、向量、矩阵、不等式等内容，必须严格使用 LaTeX 语法包裹。行内公式必须使用单个 $...$，独立公式必须使用 $$...$$。
-4. "keyword_items" 必须严格输出 3 到 5 个对象。每个对象必须采用 {"term_fr":"法语词汇","term_zh":"中文解释","definition_zh":"中文定义"} 结构。
-5. "keywords" 必须是 "keyword_items" 的逐行串联结果，格式严格为：法语词汇 (中文解释) : 具体的中文定义。不要编号，不要项目符号。
-6. ${hasImageInput
+4. "analysis" 必须是纯中文深度解析，要解释核心原理、逻辑关系、公式含义与适用场景；禁止输出法语整句，禁止空话套话。
+5. "keyword_items" 必须严格输出 3 到 5 个对象。每个对象必须采用 {"term_fr":"法语词汇","term_zh":"中文解释","definition_zh":"中文定义"} 结构。
+6. "keywords" 必须是 "keyword_items" 的逐行串联结果，格式严格为：法语词汇 (中文解释) : 具体的中文定义。不要编号，不要项目符号。
+7. ${hasImageInput
     ? `"overlay_blocks" 必须基于原图的 1000x1000 归一化坐标系输出，只覆盖需要翻译的自然语言文本区域。x、y、width、height 都必须是 0 到 1000 的整数。不要覆盖纯公式、纯图形、电路图元件、坐标轴或非自然语言结构。`
     : `"overlay_blocks" 必须返回空数组 []。`}
-7. 如果一个文本区域里既有自然语言又有公式，请尽量只覆盖自然语言部分，保留公式在底图中继续可见。
-8. "overlay_blocks" 的 "text" 字段必须是简体中文，允许夹带 LaTeX 公式；"align" 只能是 left、center、right 之一。
-9. 不要输出任何 JSON 之外的内容。`;
-}
-
-function getSnippetAnalysisSystemPrompt() {
-  return `${STRICT_JSON_PREFIX}
-
-你正在执行 Snippet（片段速译）任务中的“深度解析”子任务。
-你必须返回且只能返回一个合法 JSON 对象：
-{
-  "analysis": "..."
-}
-
-硬性规则：
-1. analysis 必须全部使用简体中文。
-2. 你要解释图中或文本中的核心原理、逻辑关系、公式含义与适用场景。
-3. 可以解释公式表达的物理/数学意义，但不要重复逐句翻译原文。
-4. 禁止输出法语整句，禁止空话套话。
-5. 不要输出任何 JSON 之外的内容。`;
+8. 如果一个文本区域里既有自然语言又有公式，请尽量只覆盖自然语言部分，保留公式在底图中继续可见。
+9. "overlay_blocks" 的 "text" 字段必须是简体中文，允许夹带 LaTeX 公式；"align" 只能是 left、center、right 之一。
+10. 不要输出任何 JSON 之外的内容。`;
 }
 
 function getDocumentMermaidSystemPrompt() {
@@ -1200,36 +1185,6 @@ async function parseAndValidateSnippetResponse(
   return parsed;
 }
 
-async function requestSnippetAnalysis(
-  userContent: UserContent,
-  retryNote?: string,
-  model = FLASH_MODEL
-) {
-  const completion = await requestJsonCompletion(
-    [
-      { role: "system", content: getSnippetAnalysisSystemPrompt() },
-      { role: "user", content: userContent },
-      ...(retryNote ? [{ role: "user" as const, content: retryNote }] : []),
-    ],
-    0.2,
-    model
-  );
-
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("Snippet 深度解析返回了空响应");
-  }
-
-  const parsed = parseJsonObject(content);
-  const analysis = normalizeText(parsed.analysis);
-
-  if (!analysis || !hasChineseText(analysis)) {
-    throw new Error("Snippet 深度解析内容为空或不是中文");
-  }
-
-  return analysis;
-}
-
 async function requestDocumentMermaid(
   userContent: UserContent,
   retryNote?: string,
@@ -1438,13 +1393,14 @@ export async function POST(request: NextRequest) {
     let responsePayload: SnippetResponse | DocumentResponse | { translation: string };
 
     if (mode === "snippet") {
+      const snippetModel = deepMode ? PRO_MODEL : FLASH_MODEL;
       const completion = await requestJsonCompletion(
         [
           { role: "system", content: getSnippetTranslationSystemPrompt(hasImageInput) },
           { role: "user", content: userContent },
         ],
         0.15,
-        FLASH_MODEL
+        snippetModel
       );
 
       const aiResponse = completion.choices[0]?.message?.content;
@@ -1463,33 +1419,10 @@ export async function POST(request: NextRequest) {
         userContent,
         hasImageInput,
         {
-          includeAnalysis: false,
-          model: FLASH_MODEL,
+          includeAnalysis: true,
+          model: snippetModel,
         }
       );
-
-      let analysis = "";
-      const analysisModel = deepMode ? PRO_MODEL : FLASH_MODEL;
-
-      try {
-        analysis = await requestSnippetAnalysis(userContent, undefined, analysisModel);
-      } catch (error) {
-        console.warn("[Translate] Snippet 深度解析首轮失败，准备重试:", error);
-        try {
-          analysis = await requestSnippetAnalysis(
-            userContent,
-            "上一次 analysis 为空、过短或不符合中文要求。请重新输出一段完整、纯中文的深度解析。",
-            analysisModel
-          );
-        } catch (retryError) {
-          console.warn("[Translate] Snippet 深度解析重试失败:", retryError);
-        }
-      }
-
-      responsePayload = {
-        ...responsePayload,
-        analysis,
-      };
     } else if (mode === "document") {
       responsePayload = await generateDocumentResponse(userContent, deepMode);
     } else {

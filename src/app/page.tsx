@@ -350,7 +350,7 @@ export default function Home() {
     }
   }, [documentPreviewUrls]);
 
-  const handleSubmit = async () => {
+  const handleTranslate = async () => {
     if (mode === "snippet" && !snippetText && !snippetFile) {
       setErrorMessage("请输入外文文本或上传课件截图");
       return;
@@ -720,7 +720,7 @@ export default function Home() {
                   <div className="ml-auto w-full sm:w-auto">
                     <button
                       id="translate-button"
-                      onClick={handleSubmit}
+                      onClick={handleTranslate}
                       disabled={isLoading}
                       className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-light text-white text-sm font-semibold hover:shadow-lg hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
                     >
