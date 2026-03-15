@@ -506,6 +506,54 @@ function wrapObviousInlineMath(text: string) {
     .join("");
 }
 
+function repairMathBody(body: string) {
+  return body
+    .replace(/\bmathbbb\b/gu, "\\mathbb")
+    .replace(/\bmathcal\b/gu, "\\mathcal")
+    .replace(/\bmathrm\b/gu, "\\mathrm")
+    .replace(/\boperatorname\b/gu, "\\operatorname")
+    .replace(/(^|[\s(,，;；:：])orall(?=\s+\\?[A-Za-z])/gu, "$1\\forall")
+    .replace(/(^|[\s(,，;；:：])forall(?=\s+\\?[A-Za-z])/gu, "$1\\forall")
+    .replace(/(^|[\s(,，;；:：])exists(?=\s+\\?[A-Za-z])/gu, "$1\\exists")
+    .replace(/(^|[\s(,，;；:：])infty(?=[\s)}\]]|$)/gu, "$1\\infty")
+    .replace(/(^|[\s(,，;；:：])alpha(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\alpha")
+    .replace(/(^|[\s(,，;；:：])beta(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\beta")
+    .replace(/(^|[\s(,，;；:：])gamma(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\gamma")
+    .replace(/(^|[\s(,，;；:：])theta(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\theta")
+    .replace(/(^|[\s(,，;；:：])phi(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\phi")
+    .replace(/(^|[\s(,，;；:：])omega(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\omega")
+    .replace(/(^|[\s(,，;；:：])sum(?=\s|_|[{(\\])/gu, "$1\\sum")
+    .replace(/(^|[\s(,，;；:：])int(?=\s|_|[{(\\])/gu, "$1\\int")
+    .replace(/(^|[\s(,，;；:：])sin(?=\s*[\[(\\])/gu, "$1\\sin")
+    .replace(/(^|[\s(,，;；:：])cos(?=\s*[\[(\\])/gu, "$1\\cos")
+    .replace(/(^|[\s(,，;；:：])tan(?=\s*[\[(\\])/gu, "$1\\tan")
+    .replace(/(^|[\s(,，;；:：])ln(?=\s*[\[(\\])/gu, "$1\\ln")
+    .replace(/(^|[\s(,，;；:：])log(?=\s*[\[(\\])/gu, "$1\\log")
+    .replace(/(^|[\s(,，;；:：])in(?=\s+\\mathbb)/gu, "$1\\in");
+}
+
+function repairLatexArtifacts(text: string) {
+  const segments = text.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g);
+
+  return segments
+    .map((segment) => {
+      if (segment.startsWith("$$")) {
+        return `$$${repairMathBody(segment.slice(2, -2))}$$`;
+      }
+
+      if (segment.startsWith("$")) {
+        return `$${repairMathBody(segment.slice(1, -1))}$`;
+      }
+
+      const repairedSegment = repairMathBody(segment);
+      return repairedSegment.replace(
+        /(?<!\$)(\\(?:forall|exists)\s+\\?[A-Za-z]+(?:_[0-9A-Za-z{}]+)?(?:\s*,\s*\\?[A-Za-z]+(?:_[0-9A-Za-z{}]+)?)?\s+\\in\s+\\mathbb\{[A-Za-z]+\})(?!\$)/gu,
+        (match) => `$${match.trim()}$`
+      );
+    })
+    .join("");
+}
+
 function hasChineseInsideMathBlock(value: string) {
   const blocks = value.match(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g) ?? [];
   return blocks.some((block) => hasChineseText(block));
@@ -639,7 +687,7 @@ function normalizeOverlayBlocks(value: unknown) {
       const maxHeight = Math.max(1, 1000 - y);
       const width = Math.min(maxWidth, Math.max(Math.min(48, maxWidth), clampNormalizedValue(record.width, 120)));
       const height = Math.min(maxHeight, Math.max(Math.min(36, maxHeight), clampNormalizedValue(record.height, 72)));
-      const text = wrapObviousInlineMath(normalizeText(record.text));
+      const text = repairLatexArtifacts(wrapObviousInlineMath(normalizeText(record.text)));
       const alignValue = normalizeText(record.align).toLowerCase();
       const align: SnippetOverlayAlign =
         alignValue === "center" || alignValue === "right" ? alignValue : "left";
@@ -671,7 +719,7 @@ function normalizeSnippetResponse(raw: Record<string, unknown>): SnippetResponse
       : parseKeywordItemsFromText(normalizeText(raw.keywords));
 
   return {
-    translation: wrapObviousInlineMath(normalizeText(raw.translation)),
+    translation: repairLatexArtifacts(wrapObviousInlineMath(normalizeText(raw.translation))),
     analysis: normalizeText(raw.analysis),
     keywords:
       normalizedKeywordItems.length > 0
@@ -732,7 +780,9 @@ function normalizeDocumentResponse(raw: Record<string, unknown>): DocumentRespon
 function normalizeDocumentExtraction(
   raw: Record<string, unknown>
 ): DocumentExtractionResponse {
-  const document_notes = wrapObviousInlineMath(normalizeText(raw.document_notes));
+  const document_notes = repairLatexArtifacts(
+    wrapObviousInlineMath(normalizeText(raw.document_notes))
+  );
   const summary_zh = normalizeText(raw.summary_zh);
 
   if (!document_notes) {
