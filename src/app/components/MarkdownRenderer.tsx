@@ -12,10 +12,35 @@ interface MarkdownRendererProps {
 }
 
 function normalizeLatexContent(content: string) {
+  const normalizeFormulaCandidate = (candidate: string) =>
+    candidate
+      .replace(/\$/g, "")
+      .replace(/∀/g, "\\forall ")
+      .replace(/∃/g, "\\exists ")
+      .replace(/∈/g, "\\in ")
+      .replace(/ℝ/g, "\\mathbb{R}")
+      .replace(/α\s*([0-9]+)/g, "\\alpha_$1")
+      .replace(/β\s*([0-9]+)/g, "\\beta_$1")
+      .replace(/γ\s*([0-9]+)/g, "\\gamma_$1")
+      .replace(/θ\s*([0-9]+)/g, "\\theta_$1")
+      .replace(/φ\s*([0-9]+)/g, "\\phi_$1")
+      .replace(/ω\s*([0-9]+)/g, "\\omega_$1")
+      .replace(/\\alpha\s*([0-9]+)/g, "\\alpha_$1")
+      .replace(/\\beta\s*([0-9]+)/g, "\\beta_$1")
+      .replace(/\\gamma\s*([0-9]+)/g, "\\gamma_$1")
+      .replace(/\\theta\s*([0-9]+)/g, "\\theta_$1")
+      .replace(/\\phi\s*([0-9]+)/g, "\\phi_$1")
+      .replace(/\\omega\s*([0-9]+)/g, "\\omega_$1")
+      .replace(/\s+/g, " ")
+      .replace(/\s*,\s*/g, ", ")
+      .trim();
+
   return content
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
     .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
     .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
+    .replace(/\$([^$\n]+)\$\$/g, (_, inner: string) => `$${inner.trim()}$`)
+    .replace(/\$\$([^$\n]+)\$/g, (_, inner: string) => `$${inner.trim()}$`)
     .replace(
       /(?<!\$)(\\(?:forall|exists)\s+\\?[A-Za-z]+(?:_[0-9A-Za-z{}]+)?(?:\s*,\s*\\?[A-Za-z]+(?:_[0-9A-Za-z{}]+)?)?\s+\\in\s+\\mathbb\{[A-Za-z]+\})(?!\$)/gu,
       (match) => `$${match.trim()}$`
@@ -23,6 +48,10 @@ function normalizeLatexContent(content: string) {
     .replace(
       /(?<!\$)(\\(?:alpha|beta|gamma|theta|phi|omega|sin|cos|tan|ln|log|int|sum)[^，。,；;\n]*(?:=|\\in)[^，。,；;\n]*)(?!\$)/gu,
       (match) => `$${match.trim()}$`
+    )
+    .replace(
+      /(?:\$+)?((?:\\forall|∀)[^。；;\n]*?(?:\\mathbb\{R\}|ℝ))\$*/gu,
+      (_, candidate: string) => `$${normalizeFormulaCandidate(candidate)}$`
     );
 }
 
