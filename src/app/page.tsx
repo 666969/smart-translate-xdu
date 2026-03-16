@@ -1116,13 +1116,31 @@ export default function Home() {
 
                             return (
                               <div key={idx} className="p-4 rounded-xl bg-background border border-card-border shadow-sm">
-                                <p className="font-medium text-foreground mb-3 text-sm">
-                                  {idx + 1}. {getQuizQuestion(q, quizLang)}
-                                </p>
+                                <div className="mb-3 flex items-start gap-2">
+                                  <span className="pt-0.5 text-sm font-medium text-foreground">
+                                    {idx + 1}.
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <MarkdownRenderer
+                                      content={getQuizQuestion(q, quizLang)}
+                                      className="[&>p]:mb-0 [&_p]:text-sm [&_p]:font-medium [&_p]:leading-7 [&_.math-display]:my-1 [&_.math-display]:py-1"
+                                    />
+                                  </div>
+                                </div>
                                 <div className="space-y-2 mb-4">
                                   {options?.map((opt, optIdx) => (
                                     <div key={optIdx} className="px-3 py-2 rounded-lg bg-card-bg border border-card-border/50 text-sm hover:border-primary/30 transition-colors">
-                                      {String.fromCharCode(65 + optIdx)}. {opt}
+                                      <div className="flex items-start gap-2">
+                                        <span className="pt-0.5 font-medium text-foreground">
+                                          {String.fromCharCode(65 + optIdx)}.
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <MarkdownRenderer
+                                            content={opt}
+                                            className="[&>p]:mb-0 [&_p]:text-sm [&_p]:leading-6 [&_.math-display]:my-1 [&_.math-display]:py-1"
+                                          />
+                                        </div>
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -1132,11 +1150,22 @@ export default function Home() {
                                     {getQuizActionLabel(quizLang)}
                                   </summary>
                                   <div className="mt-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/10 text-sm">
-                                    <p className="font-semibold text-emerald-600 mb-1">
-                                      {getQuizAnswerLabel(quizLang)}：{answer}
-                                    </p>
+                                    <div className="mb-2 flex items-start gap-1.5 text-emerald-600">
+                                      <span className="pt-0.5 text-sm font-semibold">
+                                        {getQuizAnswerLabel(quizLang)}：
+                                      </span>
+                                      <div className="min-w-0 flex-1">
+                                        <MarkdownRenderer
+                                          content={answer}
+                                          className="[&>p]:mb-0 [&_p]:text-sm [&_p]:font-semibold [&_p]:leading-6 [&_.math-display]:my-1 [&_.math-display]:py-1"
+                                        />
+                                      </div>
+                                    </div>
                                     {explanation && (
-                                      <p className="text-text-muted leading-relaxed">{explanation}</p>
+                                      <MarkdownRenderer
+                                        content={explanation}
+                                        className="[&_p]:text-sm [&_p]:leading-7 [&_li]:text-sm [&_li]:leading-7 text-text-muted"
+                                      />
                                     )}
                                   </div>
                                 </details>
