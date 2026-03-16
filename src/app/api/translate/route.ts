@@ -49,11 +49,6 @@ interface DocumentResponse {
   quiz: DocumentQuizItem[];
 }
 
-interface DocumentExtractionResponse {
-  document_notes: string;
-  summary_zh: string;
-}
-
 interface ValidateSnippetOptions {
   requireAnalysis?: boolean;
 }
@@ -218,46 +213,13 @@ function getSnippetTranslationSystemPrompt(hasImageInput: boolean) {
 10. 不要输出任何 JSON 之外的内容。`;
 }
 
-function getDocumentMermaidSystemPrompt() {
+function getDocumentSystemPrompt() {
   return `${STRICT_JSON_PREFIX}
 
-你现在只负责 Document（课件精读）任务中的 Mermaid 知识脉络图。
+你现在正在执行完整的 Document（课件精读）任务。
 你必须返回且只能返回以下 JSON：
 {
-  "mermaid": "flowchart TD\\nA[\\"...\\" ] --> B[\\"...\\"]"
-}
-
-硬性规则：
-1. Mermaid 必须可以被前端直接渲染，推荐使用 flowchart TD。
-2. 节点文本如果包含括号、加号、减号、等号、积分号、希腊字母、箭头、冒号、分号、上下标、分数、绝对值符号或任何非字母数字的特殊字符，必须使用双引号包裹，例如 A["s(t) = sin(e(t))"]。
-3. mermaid 字段中绝对不要包含 \`\`\`mermaid、\`\`\` 或任何代码块标记。
-4. 节点说明文字必须用简体中文。`;
-}
-
-function getDocumentExtractionSystemPrompt() {
-  return `${STRICT_JSON_PREFIX}
-
-你现在只负责 Document（课件精读）任务中的“课件内容抽取”子任务。
-你必须返回且只能返回以下 JSON：
-{
-  "document_notes": "...",
-  "summary_zh": "..."
-}
-
-硬性规则：
-1. document_notes 必须按原课件的阅读顺序整理标题、正文、列表、公式、图注和关键术语。
-2. document_notes 要优先保留原始法语/英语内容与公式，必要时可以补全被视觉识别截断的单词，但不要写成长篇原理解析。
-3. 如果课件中出现数学公式、积分、上下标、希腊字母或函数表达式，必须尽量使用 LaTeX 或可直接读懂的原始公式形式保留下来。
-4. summary_zh 必须使用简体中文，对整页或整组课件内容做 4 到 8 句的要点概括。
-5. 不要输出 Mermaid，不要出题，不要输出任何 JSON 之外的内容。`;
-}
-
-function getDocumentQuizSystemPrompt() {
-  return `${STRICT_JSON_PREFIX}
-
-你现在只负责 Document（课件精读）任务中的随堂小测。
-你必须返回且只能返回以下 JSON：
-{
+  "mermaid": "flowchart TD\\nA[\\"...\\" ] --> B[\\"...\\"]",
   "quiz": [
     {
       "question_fr": "...",
@@ -266,6 +228,7 @@ function getDocumentQuizSystemPrompt() {
       "options_fr": ["...", "...", "...", "..."],
       "options_zh": ["...", "...", "...", "..."],
       "options_en": ["...", "...", "...", "..."],
+      "answer": "...",
       "answer_fr": "...",
       "answer_zh": "...",
       "answer_en": "..."
@@ -274,12 +237,16 @@ function getDocumentQuizSystemPrompt() {
 }
 
 硬性规则：
-1. quiz 必须严格返回 3 道单选题。
-2. 每道题必须严格采用 {"question_fr":"...","question_zh":"...","question_en":"...","options_fr":["...","...","...","..."],"options_zh":["...","...","...","..."],"options_en":["...","...","...","..."],"answer_fr":"...","answer_zh":"...","answer_en":"..."} 结构。
-3. question_fr、question_zh、question_en 必须分别用法语、简体中文、英文表达同一道题，三者语义必须完全对应。
-4. options_fr、options_zh、options_en 必须一一对应、顺序一致，并且每题必须恰好 4 个选项。
-5. answer_fr、answer_zh、answer_en 不允许填写 A/B/C/D 字母，必须填写该题正确选项对应的完整具体内容，并与三组 options 中的同一位置选项语义一致。
-6. 题目必须围绕课件核心知识点，三语内容都要准确自然。`;
+1. mermaid 必须可以被前端直接渲染，推荐使用 flowchart TD。
+2. 节点文本如果包含括号、加号、减号、等号、积分号、希腊字母、箭头、冒号、分号、上下标、分数、绝对值符号或任何非字母数字的特殊字符，必须使用双引号包裹，例如 A["s(t) = sin(e(t))"]。
+3. mermaid 字段中绝对不要包含 \`\`\`mermaid、\`\`\` 或任何代码块标记，节点说明文字必须用简体中文。
+4. quiz 必须严格返回 3 道单选题。
+5. 每道题必须严格采用 {"question_fr":"...","question_zh":"...","question_en":"...","options_fr":["...","...","...","..."],"options_zh":["...","...","...","..."],"options_en":["...","...","...","..."],"answer":"...","answer_fr":"...","answer_zh":"...","answer_en":"..."} 结构。
+6. question_fr、question_zh、question_en 必须分别用法语、简体中文、英文表达同一道题，三者语义必须完全对应。
+7. options_fr、options_zh、options_en 必须一一对应、顺序一致，并且每题必须恰好 4 个选项。
+8. answer、answer_fr、answer_zh、answer_en 不允许填写 A/B/C/D 字母，必须填写该题正确选项对应的完整具体内容，并与三组 options 中的同一位置选项语义一致。
+9. 题目必须围绕课件核心知识点，三语内容都要准确自然。
+10. 不要输出任何 JSON 之外的内容。`;
 }
 
 function normalizeText(value: unknown) {
@@ -470,12 +437,6 @@ function parseJsonArrayLike(value: unknown) {
   }
 
   return [];
-}
-
-function hasImageInputInUserContent(userContent: UserContent) {
-  return Array.isArray(userContent)
-    ? userContent.some((part) => part.type === "image_url")
-    : false;
 }
 
 function hasChineseText(value: string) {
@@ -812,29 +773,15 @@ function normalizeDocumentResponse(raw: Record<string, unknown>): DocumentRespon
       .slice(0, 3),
   };
 
-  if (!response.mermaid && response.quiz.length === 0) {
-    throw new Error("Document 模式未生成可用的导图或小测结果");
+  if (!response.mermaid) {
+    throw new Error("Document 模式缺少可渲染的 mermaid");
+  }
+
+  if (response.quiz.length !== 3) {
+    throw new Error("Document 模式的 quiz 必须严格返回 3 道题");
   }
 
   return response;
-}
-
-function normalizeDocumentExtraction(
-  raw: Record<string, unknown>
-): DocumentExtractionResponse {
-  const document_notes = repairLatexArtifacts(
-    wrapObviousInlineMath(normalizeText(raw.document_notes))
-  );
-  const summary_zh = normalizeText(raw.summary_zh);
-
-  if (!document_notes) {
-    throw new Error("Document 抽取结果缺少 document_notes");
-  }
-
-  return {
-    document_notes,
-    summary_zh,
-  };
 }
 
 function validateSnippetResponse(
@@ -1277,138 +1224,26 @@ async function parseAndValidateSnippetResponse(
   return parsed;
 }
 
-async function requestDocumentMermaid(
-  userContent: UserContent,
-  retryNote?: string,
-  model = FLASH_MODEL
-) {
-  const completion = await requestJsonCompletion(
-    [
-      { role: "system", content: getDocumentMermaidSystemPrompt() },
-      { role: "user", content: userContent },
-      ...(retryNote ? [{ role: "user" as const, content: retryNote }] : []),
-    ],
-    0.1,
-    model
-  );
-
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    return "";
-  }
-
-  const parsed = parseJsonObject(content);
-  return stripCodeFence(normalizeText(parsed.mermaid));
-}
-
-async function requestDocumentQuiz(
-  userContent: UserContent,
-  retryNote?: string,
-  model = FLASH_MODEL
-) {
-  const completion = await requestJsonCompletion(
-    [
-      { role: "system", content: getDocumentQuizSystemPrompt() },
-      { role: "user", content: userContent },
-      ...(retryNote ? [{ role: "user" as const, content: retryNote }] : []),
-    ],
-    0.15,
-    model
-  );
-
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    return [] as DocumentQuizItem[];
-  }
-
-  const parsed = parseJsonObject(content);
-  return parseJsonArrayLike(parsed.quiz)
-    .map(normalizeQuizItem)
-    .filter((item): item is DocumentQuizItem => Boolean(item))
-    .slice(0, 3);
-}
-
-async function requestDocumentExtraction(userContent: UserContent) {
-  const completion = await requestJsonCompletion(
-    [
-      { role: "system", content: getDocumentExtractionSystemPrompt() },
-      { role: "user", content: userContent },
-    ],
-    0.05,
-    FLASH_MODEL
-  );
-
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("Document 抽取阶段返回了空响应");
-  }
-
-  return normalizeDocumentExtraction(parseJsonObject(content));
-}
-
-function buildDocumentContextFromExtraction(
-  extraction: DocumentExtractionResponse
-) {
-  return `以下是从课件图片中抽取出的结构化内容，请基于这些内容完成后续导图和随堂小测生成。
-
-【课件原文整理】
-${extraction.document_notes}
-
-${extraction.summary_zh ? `【中文摘要】\n${extraction.summary_zh}` : ""}`.trim();
-}
-
 async function generateDocumentResponse(
   userContent: UserContent,
   useDeepModel: boolean
 ) {
-  let downstreamContent: UserContent = userContent;
-  const reasoningModel = useDeepModel ? PRO_MODEL : FLASH_MODEL;
+  const documentModel = useDeepModel ? PRO_MODEL : FLASH_MODEL;
+  const completion = await requestJsonCompletion(
+    [
+      { role: "system", content: getDocumentSystemPrompt() },
+      { role: "user", content: userContent },
+    ],
+    0.1,
+    documentModel
+  );
 
-  if (hasImageInputInUserContent(userContent)) {
-    try {
-      const extracted = await requestDocumentExtraction(userContent);
-      downstreamContent = buildDocumentContextFromExtraction(extracted);
-    } catch (error) {
-      console.warn("[Translate] Document 抽取阶段失败，回退到直接图像解析:", error);
-    }
+  const aiResponse = completion.choices[0]?.message?.content;
+  if (!aiResponse) {
+    throw new Error("Document 模式返回了空响应");
   }
 
-  const [mermaidResult, quizResult] = await Promise.allSettled([
-    requestDocumentMermaid(downstreamContent, undefined, reasoningModel),
-    requestDocumentQuiz(downstreamContent, undefined, reasoningModel),
-  ]);
-
-  let mermaid = mermaidResult.status === "fulfilled" ? mermaidResult.value : "";
-  let quiz = quizResult.status === "fulfilled" ? quizResult.value : [];
-
-  if (!mermaid) {
-    try {
-      mermaid = await requestDocumentMermaid(
-        downstreamContent,
-        "上一次 Mermaid 输出为空或不可用。请重新输出一份可以直接渲染的 Mermaid。",
-        reasoningModel
-      );
-    } catch (error) {
-      console.warn("[Translate] Mermaid 重试失败:", error);
-    }
-  }
-
-  if (quiz.length !== 3) {
-    try {
-      const retriedQuiz = await requestDocumentQuiz(
-        downstreamContent,
-        "上一次 quiz 数量不足或结构不完整。请重新输出严格 3 道完整的双语单选题。",
-        reasoningModel
-      );
-      if (retriedQuiz.length >= quiz.length) {
-        quiz = retriedQuiz;
-      }
-    } catch (error) {
-      console.warn("[Translate] Quiz 重试失败:", error);
-    }
-  }
-
-  return normalizeDocumentResponse({ mermaid, quiz });
+  return normalizeDocumentResponse(parseJsonObject(aiResponse));
 }
 
 export async function POST(request: NextRequest) {
