@@ -4,11 +4,17 @@ import OpenAI from "openai";
 interface DocumentQuizItem {
   question_fr: string;
   question_zh: string;
+  question_en: string;
   options_fr: string[];
   options_zh: string[];
-  answer: string;
+  options_en: string[];
+  answer_fr: string;
+  answer_zh: string;
+  answer_en: string;
+  answer?: string;
   explanation_fr?: string;
   explanation_zh?: string;
+  explanation_en?: string;
   explanation?: string;
 }
 
@@ -256,20 +262,24 @@ function getDocumentQuizSystemPrompt() {
     {
       "question_fr": "...",
       "question_zh": "...",
+      "question_en": "...",
       "options_fr": ["...", "...", "...", "..."],
       "options_zh": ["...", "...", "...", "..."],
-      "answer": "A"
+      "options_en": ["...", "...", "...", "..."],
+      "answer_fr": "...",
+      "answer_zh": "...",
+      "answer_en": "..."
     }
   ]
 }
 
 硬性规则：
 1. quiz 必须严格返回 3 道单选题。
-2. 每道题必须严格采用 {"question_fr":"...","question_zh":"...","options_fr":["...","...","...","..."],"options_zh":["...","...","...","..."],"answer":"A"} 结构。
-3. 唯一允许出现法语完整句子的字段只有 question_fr 和 options_fr。
-4. options_fr 和 options_zh 必须一一对应、顺序一致，并且每题必须恰好 4 个选项。
-5. answer 只能是大写字母 A、B、C 或 D。
-6. 题目必须围绕课件核心知识点，法语与中文语义必须完全对应。`;
+2. 每道题必须严格采用 {"question_fr":"...","question_zh":"...","question_en":"...","options_fr":["...","...","...","..."],"options_zh":["...","...","...","..."],"options_en":["...","...","...","..."],"answer_fr":"...","answer_zh":"...","answer_en":"..."} 结构。
+3. question_fr、question_zh、question_en 必须分别用法语、简体中文、英文表达同一道题，三者语义必须完全对应。
+4. options_fr、options_zh、options_en 必须一一对应、顺序一致，并且每题必须恰好 4 个选项。
+5. answer_fr、answer_zh、answer_en 不允许填写 A/B/C/D 字母，必须填写该题正确选项对应的完整具体内容，并与三组 options 中的同一位置选项语义一致。
+6. 题目必须围绕课件核心知识点，三语内容都要准确自然。`;
 }
 
 function normalizeText(value: unknown) {
@@ -736,24 +746,56 @@ function normalizeQuizItem(raw: unknown): DocumentQuizItem | null {
   }
 
   const record = raw as Record<string, unknown>;
+  const answer = normalizeText(record.answer);
   const item: DocumentQuizItem = {
     question_fr: normalizeText(record.question_fr),
     question_zh: normalizeText(record.question_zh),
+    question_en: normalizeText(record.question_en),
     options_fr: normalizeStringArray(record.options_fr),
     options_zh: normalizeStringArray(record.options_zh),
-    answer: normalizeText(record.answer).toUpperCase(),
+    options_en: normalizeStringArray(record.options_en),
+    answer_fr: normalizeText(record.answer_fr),
+    answer_zh: normalizeText(record.answer_zh),
+    answer_en: normalizeText(record.answer_en),
+    answer: answer || undefined,
     explanation_fr: normalizeText(record.explanation_fr) || undefined,
     explanation_zh: normalizeText(record.explanation_zh) || undefined,
+    explanation_en: normalizeText(record.explanation_en) || undefined,
     explanation: normalizeText(record.explanation) || undefined,
   };
+
+  const legacyLetterIndex = ["A", "B", "C", "D"].indexOf(answer.toUpperCase());
+  const legacyMatchedIndex =
+    legacyLetterIndex >= 0
+      ? legacyLetterIndex
+      : [item.options_zh, item.options_fr, item.options_en]
+          .map((options) => options.findIndex((option) => option.trim() === answer))
+          .find((index) => index >= 0) ?? -1;
+
+  if (legacyMatchedIndex >= 0) {
+    if (!item.answer_fr) {
+      item.answer_fr = item.options_fr[legacyMatchedIndex] || "";
+    }
+    if (!item.answer_zh) {
+      item.answer_zh = item.options_zh[legacyMatchedIndex] || "";
+    }
+    if (!item.answer_en) {
+      item.answer_en = item.options_en[legacyMatchedIndex] || "";
+    }
+  }
 
   if (
     !item.question_fr ||
     !item.question_zh ||
+    !item.question_en ||
     item.options_fr.length !== 4 ||
     item.options_zh.length !== 4 ||
+    item.options_en.length !== 4 ||
     item.options_fr.length !== item.options_zh.length ||
-    !["A", "B", "C", "D"].includes(item.answer)
+    item.options_fr.length !== item.options_en.length ||
+    !item.answer_fr ||
+    !item.answer_zh ||
+    !item.answer_en
   ) {
     return null;
   }
