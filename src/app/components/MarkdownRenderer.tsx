@@ -11,6 +11,92 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
+const LATEX_COMMAND_PATTERN =
+  /\\(?:frac|int|sum|sqrt|sin|cos|tan|ln|log|forall|exists|infty|alpha|beta|gamma|theta|phi|omega|mathbb|mathrm|mathcal|operatorname|cdot|times|leq|geq|neq|to|rightarrow|left|right)\b/u;
+
+function repairFormulaBody(candidate: string) {
+  return candidate
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/\$\$/g, "")
+    .replace(/^[$\s]+|[$\s]+$/g, "")
+    .replace(/∀/g, "\\forall ")
+    .replace(/∃/g, "\\exists ")
+    .replace(/∈/g, "\\in ")
+    .replace(/ℝ/g, "\\mathbb{R}")
+    .replace(/α\s*([0-9]+)/g, "\\alpha_$1")
+    .replace(/β\s*([0-9]+)/g, "\\beta_$1")
+    .replace(/γ\s*([0-9]+)/g, "\\gamma_$1")
+    .replace(/θ\s*([0-9]+)/g, "\\theta_$1")
+    .replace(/φ\s*([0-9]+)/g, "\\phi_$1")
+    .replace(/ω\s*([0-9]+)/g, "\\omega_$1")
+    .replace(/(^|[\s(,，;；:：])orall(?=\s+\\?[A-Za-z])/gu, "$1\\forall")
+    .replace(/(^|[\s(,，;；:：])forall(?=\s+\\?[A-Za-z])/gu, "$1\\forall")
+    .replace(/(^|[\s(,，;；:：])exists(?=\s+\\?[A-Za-z])/gu, "$1\\exists")
+    .replace(/(^|[\s(,，;；:：])infty(?=[\s)}\]]|$)/gu, "$1\\infty")
+    .replace(/(^|[\s(,，;；:：])alpha(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\alpha")
+    .replace(/(^|[\s(,，;；:：])beta(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\beta")
+    .replace(/(^|[\s(,，;；:：])gamma(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\gamma")
+    .replace(/(^|[\s(,，;；:：])theta(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\theta")
+    .replace(/(^|[\s(,，;；:：])phi(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\phi")
+    .replace(/(^|[\s(,，;；:：])omega(?=[_^{\s.,，;；:：)}\]]|$)/gu, "$1\\omega")
+    .replace(/(^|[^\\])frac(?=\s*\{)/gu, "$1\\frac")
+    .replace(/(^|[^\\])int(?=\s*[_{])/gu, "$1\\int")
+    .replace(/(^|[^\\])sum(?=\s*[_{])/gu, "$1\\sum")
+    .replace(/(^|[^\\])sqrt(?=\s*[\[{])/gu, "$1\\sqrt")
+    .replace(/(^|[\s(,，;；:：])sin(?=\s*[\[(\\])/gu, "$1\\sin")
+    .replace(/(^|[\s(,，;；:：])cos(?=\s*[\[(\\])/gu, "$1\\cos")
+    .replace(/(^|[\s(,，;；:：])tan(?=\s*[\[(\\])/gu, "$1\\tan")
+    .replace(/(^|[\s(,，;；:：])ln(?=\s*[\[(\\])/gu, "$1\\ln")
+    .replace(/(^|[\s(,，;；:：])log(?=\s*[\[(\\])/gu, "$1\\log")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function looksLikeStandaloneFormulaLine(line: string) {
+  const trimmed = line.trim().replace(/^[$\s]+|[$\s]+$/g, "");
+
+  if (!trimmed) {
+    return false;
+  }
+
+  if (/[\u4e00-\u9fff]/u.test(trimmed)) {
+    return false;
+  }
+
+  if (/^(#{1,6}|\*|-|\d+\.)\s/u.test(trimmed)) {
+    return false;
+  }
+
+  const hasMathSignal =
+    LATEX_COMMAND_PATTERN.test(trimmed) ||
+    /[∀∃∈ℝα-ωΑ-Ω∫∑∞≈≠≤≥±]/u.test(trimmed) ||
+    /\b[A-Za-z]\w*\([^)\n]+\)\s*=/u.test(trimmed);
+
+  const hasFormulaShape =
+    /=/u.test(trimmed) ||
+    /\\(?:forall|exists|frac|int|sum|sqrt)/u.test(trimmed);
+
+  return hasMathSignal && hasFormulaShape;
+}
+
+function normalizeStandaloneFormulaLine(line: string) {
+  const repaired = repairFormulaBody(line);
+
+  if (!repaired) {
+    return "";
+  }
+
+  if (repaired.startsWith("$$") && repaired.endsWith("$$")) {
+    return repaired;
+  }
+
+  if (repaired.startsWith("$") && repaired.endsWith("$")) {
+    return repaired;
+  }
+
+  return `$$${repaired}$$`;
+}
+
 function normalizeLatexContent(content: string) {
   const normalizeFormulaCandidate = (candidate: string) =>
     candidate
@@ -35,7 +121,7 @@ function normalizeLatexContent(content: string) {
       .replace(/\s*,\s*/g, ", ")
       .trim();
 
-  return content
+  const normalized = content
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
     .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
     .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
@@ -53,6 +139,29 @@ function normalizeLatexContent(content: string) {
       /(?:\$+)?((?:\\forall|∀)[^。；;\n]*?(?:\\mathbb\{R\}|ℝ))\$*/gu,
       (_, candidate: string) => `$${normalizeFormulaCandidate(candidate)}$`
     );
+
+  return normalized
+    .split(/\r?\n/)
+    .map((line) => {
+      if (!line.trim()) {
+        return line;
+      }
+
+      // 修复大模型常见错误：行尾有孤立的 $$ 但行首没有对应的 $$
+      // 例如："s(t) =\int_{-\infty}^{\infty} h(\theta) d\theta$$"
+      // 先剥除行尾多余的 $$，再让 looksLikeStandaloneFormulaLine 正常识别
+      const lineWithoutTrailingDollar = line.replace(/\$\$\s*$/, "").replace(/\$\s*$/, "");
+
+      if (looksLikeStandaloneFormulaLine(lineWithoutTrailingDollar)) {
+        return normalizeStandaloneFormulaLine(lineWithoutTrailingDollar);
+      }
+
+      return line.replace(
+        /((?:[A-Za-z]\w*\([^)\n]+\)|[A-Za-z]\w*)\s*=\s*[^$\n]*?(?:\\(?:frac|int|sum|sqrt|sin|cos|tan|ln|log|alpha|beta|gamma|theta|phi|omega|mathbb)|[α-ωΑ-Ω∫∑∞])[^$\n]*)\$\$?$/gu,
+        (_, candidate: string) => `$${repairFormulaBody(candidate)}$`
+      );
+    })
+    .join("\n");
 }
 
 export default function MarkdownRenderer({
