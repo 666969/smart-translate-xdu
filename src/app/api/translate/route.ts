@@ -199,28 +199,17 @@ function getSnippetTranslationSystemPrompt(hasImageInput: boolean) {
 }
 
 硬性规则：
-1. "translation" 必须是完整中文翻译文本，保持原图的段落、换行、层级、编号、列表和公式顺序。
-2. 你只翻译自然语言文本。对于公式、变量、函数名、微积分表达式、矩阵、向量、图号、元件符号、电路图图形、坐标轴、波形、表格线和纯符号结构，请不要改写成中文句子。
-3. 所有数学公式、数学符号、变量、上下标、希腊字母、积分、微分、极限、求和、向量、矩阵、不等式等内容，必须严格使用 LaTeX 语法包裹。行内公式必须使用单个 $...$，独立公式必须使用 $$...$$。
-4. 绝对禁止裸输出任何 LaTeX 命令。凡是包含 \\frac、\\int、\\sum、\\sqrt、\\sin、\\cos、\\tan、\\ln、\\log、\\alpha、\\beta、\\gamma、\\theta、\\phi、\\omega、\\forall、\\exists、\\in、\\mathbb、上下标、分式、积分号、希腊字母的内容，都必须放在 $...$ 或 $$...$$ 中。
-5. 凡是形如 H(p)=...、s(t)=...、y(t)=...、e(t)=...、x(t)=... 的整行表达式，只要右侧包含数学运算、分式、积分、求和、三角函数、上下标或希腊字母，就必须整体输出为独立公式块 $$...$$，并单独占一行。
-6. 如果一句话中同时出现中文与公式，中文必须保留在正文中，公式部分只用 $...$ 包裹，不要让 LaTeX 命令裸露在中文句子里。
-7. "analysis" 中如果需要引用公式，也必须遵守相同的数学包裹规则，不允许出现裸露的 \\int、\\frac、\\alpha 等命令。
-8. 在输出最终 JSON 前，必须先自行检查并修正以下问题：
-   - 是否存在裸露的 \\int、\\frac、\\sum、\\sqrt、\\alpha、\\theta、\\mathbb 等命令；
-   - 是否存在不成对的 $ 或 $$；
-   - 是否存在应该独立成行却仍然混在正文里的整行公式；
-   - 是否存在形如 forall、alpha、theta、mathbb 但缺少反斜杠的伪 LaTeX 命令。
-   如果发现，必须先修正，再输出最终 JSON。
-9. "analysis" 必须是纯中文深度解析，要解释核心原理、逻辑关系、公式含义与适用场景；禁止输出法语整句，禁止空话套话。
-10. "keyword_items" 必须严格输出 3 到 5 个对象。每个对象必须采用 {"term_fr":"法语词汇","term_zh":"中文解释","definition_zh":"中文定义"} 结构。
-11. "keywords" 必须是 "keyword_items" 的逐行串联结果，格式严格为：法语词汇 (中文解释) : 具体的中文定义。不要编号，不要项目符号。
-12. ${hasImageInput
-    ? `"overlay_blocks" 必须基于原图的 1000x1000 归一化坐标系输出，只覆盖需要翻译的自然语言文本区域。x、y、width、height 都必须是 0 到 1000 的整数。不要覆盖纯公式、纯图形、电路图元件、坐标轴或非自然语言结构。`
+1. translation 必须是完整中文翻译文本。所有公式必须用 LaTeX (\`$...$\` 或 \`$$...$$\`) 包裹。
+2. analysis 必须是纯中文深度解析，解释核心原理、公式含义与适用场景。
+3. keyword_items 必须严格输出 3 到 5 个包含 term_fr, term_zh, definition_zh 的对象。
+4. keywords 必须是 keyword_items 的逐行串联，格式为：法语词汇 (中文解释) : 具体的中文定义。
+5. ${hasImageInput
+    ? `"overlay_blocks" 是最关键的字段！请基于原图的 1000x1000 归一化坐标系，将所有法语/英语的自然语言文本块翻译为中文并输出。
+    - 不要覆盖纯图形、曲线、坐标轴、孤立的数字或纯公式。只覆盖描述性文字。
+    - x, y, width, height 是相对于左上角 (0,0) 的百分比数值（0~1000）。
+    - 务必精准提取位置，因为你的中文将会作为涂层盖在原图上。`
     : `"overlay_blocks" 必须返回空数组 []。`}
-13. 如果一个文本区域里既有自然语言又有公式，请尽量只覆盖自然语言部分，保留公式在底图中继续可见。
-14. "overlay_blocks" 的 "text" 字段必须是简体中文，允许夹带 LaTeX 公式；"align" 只能是 left、center、right 之一。
-15. 不要输出任何 JSON 之外的内容。`;
+6. 不要输出任何 JSON 之外的内容。`;
 }
 
 function getDocumentSystemPrompt() {
@@ -967,195 +956,7 @@ async function requestJsonCompletion(
   return openai.chat.completions.create(requestPayload);
 }
 
-async function repairSnippetResponse(
-  userContent: UserContent,
-  invalidResponse: string,
-  issues: string[],
-  hasImageInput: boolean,
-  includeAnalysis: boolean,
-  model = FLASH_MODEL
-) {
-  const repairPrompt = `${STRICT_JSON_PREFIX}
 
-你现在处于 Snippet 输出纠错模式。你会收到原始输入、上一次不合格的 JSON 和错误列表。
-你的任务不是解释错误，而是重新输出一个完全合格的 JSON。
-
-必须严格返回以下结构：
-{
-  "translation": "...",
-  ${includeAnalysis ? `"analysis": "...",` : ""}
-  "keywords": "...",
-  "keyword_items": [
-    {
-      "term_fr": "...",
-      "term_zh": "...",
-      "definition_zh": "..."
-    }
-  ],
-  "overlay_blocks": [
-    {
-      "id": "block-1",
-      "x": 120,
-      "y": 180,
-      "width": 680,
-      "height": 96,
-      "text": "...",
-      "align": "left"
-    }
-  ]
-}
-
-纠错硬性规则：
-1. translation 必须是中文，且必须保持原始排版层级。
-2. 所有数学公式、数学符号、变量、上下标、希腊字母、积分、微分、极限、求和、向量、矩阵、不等式都必须严格使用 LaTeX 包裹。行内公式用 $...$，独立公式用 $$...$$。
-3. ${includeAnalysis ? "analysis 必须是纯中文，不得输出法语整句。" : "本次不要返回 analysis 字段。"}
-4. keyword_items 必须严格为 3 到 5 个词条，keywords 必须是它们的逐行串联文本。
-5. ${hasImageInput
-    ? `overlay_blocks 必须基于原图的 1000x1000 归一化坐标，只覆盖自然语言文本区域，不要覆盖纯公式和图形。`
-    : `overlay_blocks 必须返回空数组 []。`}
-6. 不要输出任何 JSON 之外的文本。`;
-
-  const completion = await requestJsonCompletion(
-    [
-      { role: "system", content: repairPrompt },
-      { role: "user", content: userContent },
-      { role: "assistant", content: invalidResponse },
-      {
-        role: "user",
-        content: `上一个 JSON 不合格，问题如下：\n- ${issues.join("\n- ")}\n请重新输出完整且合法的 JSON。`,
-      },
-    ],
-    0.1,
-    model
-  );
-
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("纠错阶段返回了空响应");
-  }
-
-  return content;
-}
-
-async function repairSnippetKeywords(
-  userContent: UserContent,
-  invalidKeywords: string,
-  model = FLASH_MODEL
-) {
-  const completion = await requestJsonCompletion(
-    [
-      {
-        role: "system",
-        content: `${STRICT_JSON_PREFIX}
-
-你现在只负责修复 Snippet 模式中的关键词。
-你必须只返回一个 JSON 对象，结构如下：
-{
-  "keyword_items": [
-    {
-      "term_fr": "...",
-      "term_zh": "...",
-      "definition_zh": "..."
-    }
-  ]
-}
-
-硬性规则：
-1. 必须输出 3 到 5 个词条。
-2. term_fr 必须是原始内容中的法语词或法语短语。
-3. term_zh 必须是简体中文解释。
-4. definition_zh 必须是简体中文定义。
-5. 不要输出任何 JSON 之外的文本。`,
-      },
-      { role: "user", content: userContent },
-      {
-        role: "user",
-        content: `下面是上一次不合格的关键词文本，仅供你理解主题，不要沿用其错误格式：
-${invalidKeywords}
-
-请重新输出合法 JSON。`,
-      },
-    ],
-    0,
-    model
-  );
-
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("关键词纠错阶段返回了空响应");
-  }
-
-  const parsed = parseJsonObject(content);
-  const keywordItems = normalizeKeywordItems(parsed.keyword_items);
-
-  if (keywordItems.length >= 3 && keywordItems.length <= 5) {
-    return {
-      keyword_items: keywordItems,
-      keywords: buildKeywordString(keywordItems),
-    };
-  }
-
-  const synthesizedKeywords = synthesizeKeywordsLocally(userContent, invalidKeywords);
-  const synthesizedItems = parseKeywordItemsFromText(synthesizedKeywords);
-  return {
-    keyword_items: synthesizedItems,
-    keywords: synthesizedItems.length > 0 ? buildKeywordString(synthesizedItems) : synthesizedKeywords,
-  };
-}
-
-async function repairSnippetOverlayBlocks(
-  userContent: UserContent,
-  translation: string,
-  model = FLASH_MODEL
-) {
-  const completion = await requestJsonCompletion(
-    [
-      {
-        role: "system",
-        content: `${STRICT_JSON_PREFIX}
-
-你现在只负责 Snippet 模式中的 overlay_blocks。
-你必须只返回一个 JSON 对象：
-{
-  "overlay_blocks": [
-    {
-      "id": "block-1",
-      "x": 120,
-      "y": 180,
-      "width": 680,
-      "height": 96,
-      "text": "...",
-      "align": "left"
-    }
-  ]
-}
-
-硬性规则：
-1. 坐标系统一使用原图的 1000x1000 归一化坐标系。
-2. 只覆盖需要翻译的自然语言文本区域，不要覆盖纯公式、图形、电路图元件、坐标轴或非自然语言结构。
-3. text 必须是简体中文，允许包含 LaTeX 公式。
-4. align 只能是 left、center、right。
-5. 不要输出任何 JSON 之外的文本。`,
-      },
-      { role: "user", content: userContent },
-      {
-        role: "user",
-        content: `下面是已经确认的完整中文译文，请用它来辅助定位文本块：
-${translation}`,
-      },
-    ],
-    0.1,
-    model
-  );
-
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("overlay_blocks 纠错阶段返回了空响应");
-  }
-
-  const parsed = parseJsonObject(content);
-  return normalizeOverlayBlocks(parsed.overlay_blocks);
-}
 
 async function parseAndValidateSnippetResponse(
   aiResponse: string,
@@ -1166,74 +967,24 @@ async function parseAndValidateSnippetResponse(
     model?: string;
   } = {}
 ) {
-  const includeAnalysis = options.includeAnalysis !== false;
-  const model = options.model || FLASH_MODEL;
   let parsed = normalizeSnippetResponse(parseJsonObject(aiResponse));
-  let issues = validateSnippetResponse(parsed, {
-    requireAnalysis: includeAnalysis,
-  });
 
-  if (issues.length > 0) {
-    console.warn("[Translate] Snippet 输出未通过校验，准备自动纠错:", issues);
-    const repairedResponse = await repairSnippetResponse(
-      userContent,
-      JSON.stringify(parsed, null, 2),
-      issues,
-      hasImageInput,
-      includeAnalysis,
-      model
-    );
-    parsed = normalizeSnippetResponse(parseJsonObject(repairedResponse));
-    issues = validateSnippetResponse(parsed, {
-      requireAnalysis: includeAnalysis,
-    });
-  }
-
+  // 我们移除所有的自动纠错 (repair pipelines)，直接利用现有的合成方法/本地修复
+  // 如果 keyword 不够，利用本地方法兜底合成
   if (parsed.keyword_items.length < 3 || parsed.keyword_items.length > 5) {
-    try {
-      const repairedKeywords = await repairSnippetKeywords(
-        userContent,
-        parsed.keywords,
-        model
-      );
-      parsed = {
-        ...parsed,
-        keywords: repairedKeywords.keywords,
-        keyword_items: repairedKeywords.keyword_items,
-      };
-      issues = validateSnippetResponse(parsed, {
-        requireAnalysis: includeAnalysis,
-      });
-    } catch (error) {
-      console.warn("[Translate] 关键词自动修复失败:", error);
-    }
+    const synthesizedKeywords = synthesizeKeywordsLocally(userContent, parsed.keywords);
+    const synthesizedItems = parseKeywordItemsFromText(synthesizedKeywords);
+    
+    parsed = {
+      ...parsed,
+      keyword_items: synthesizedItems.length > 0 ? synthesizedItems : parsed.keyword_items,
+      keywords: synthesizedItems.length > 0 ? buildKeywordString(synthesizedItems) : parsed.keywords,
+    };
   }
 
-  if (hasImageInput && parsed.overlay_blocks.length === 0) {
-    try {
-      const repairedOverlays = await repairSnippetOverlayBlocks(
-        userContent,
-        parsed.translation,
-        model
-      );
-      if (repairedOverlays.length > 0) {
-        parsed = {
-          ...parsed,
-          overlay_blocks: repairedOverlays,
-        };
-      }
-    } catch (error) {
-      console.warn("[Translate] overlay_blocks 自动修复失败:", error);
-    }
-  }
-
-  issues = validateSnippetResponse(parsed, {
-    requireAnalysis: includeAnalysis,
-  });
-  if (issues.length > 0) {
-    throw new Error(`Snippet 输出校验失败：${issues.join("；")}`);
-  }
-
+  // 不再抛出任何异常阻塞主流程返回，把当前解析出的 best-effort payload 抛回前端。
+  // 通过简化校验流程，减少 API 请求延时，避免 3x-4x 的 LLM tokens 等待。
+  
   return parsed;
 }
 
