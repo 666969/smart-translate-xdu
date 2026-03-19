@@ -9,7 +9,6 @@ const KeywordGlossary = lazy(() => import("./components/KeywordGlossary"));
 const DocumentMindmapPanel = lazy(() => import("./components/DocumentMindmapPanel"));
 const DocumentQuizPanel = lazy(() => import("./components/DocumentQuizPanel"));
 const ExportButton = lazy(() => import("./components/ExportButton"));
-const SnippetOverlayPreview = lazy(() => import("./components/SnippetOverlayPreview"));
 import Header from "./components/Header";
 import { BookOpen } from "lucide-react";
 
@@ -231,7 +230,6 @@ export default function Home() {
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [keywordsResult, setKeywordsResult] = useState<string | null>(null);
   const [keywordItemsResult, setKeywordItemsResult] = useState<KeywordItem[]>([]);
-  const [overlayBlocksResult, setOverlayBlocksResult] = useState<any[]>([]);
   const [mermaidData, setMermaidData] = useState<string | null>(null);
   const [quizData, setQuizData] = useState<QuizItem[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -360,7 +358,6 @@ export default function Home() {
     setAnalysisResult(null);
     setKeywordsResult(null);
     setKeywordItemsResult([]);
-    setOverlayBlocksResult([]);
     setMermaidData(null);
     setQuizData(null);
 
@@ -417,7 +414,6 @@ export default function Home() {
         setAnalysisResult(data.analysis || null);
         setKeywordsResult(data.keywords || null);
         setKeywordItemsResult(normalizeKeywordItems(data.keyword_items));
-        setOverlayBlocksResult(Array.isArray(data.overlay_blocks) ? data.overlay_blocks : []);
         
         setMermaidData(null);
         setQuizData(null);
@@ -858,64 +854,27 @@ export default function Home() {
                         </span>
                       </div>
                     ) : translationResult ? (
-                      <Suspense fallback={<div className="text-sm text-text-muted">加载视图...</div>}>
-                        <div className="flex h-full flex-col overflow-y-auto">
-                          
-                          {/* Image Format Preserving View (Overlay First) */}
-                          {snippetPreviewUrl && overlayBlocksResult.length > 0 && (
-                            <div className="mb-4">
-                              <SnippetOverlayPreview
-                                overlays={overlayBlocksResult}
-                                imageUrl={snippetPreviewUrl}
-                                showOriginalImage={true}
-                              />
+                      <Suspense fallback={<div className="text-sm text-text-muted">加载排版引擎...</div>}>
+                        <div className="flex h-full flex-col rounded-[28px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.98))] shadow-sm overflow-hidden">
+                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-card-border/70 px-4 py-3 bg-white/85">
+                            <div>
+                              <p className="text-xs font-semibold tracking-[0.08em] text-text-muted">
+                                译文整理
+                              </p>
+                              <p className="mt-1 text-xs text-text-light">
+                                聚焦中文译文与公式呈现，方便对照左侧原图通读。
+                              </p>
                             </div>
-                          )}
-
-                          {/* Fallback to Text View or Collapsed Text View */}
-                          <div className={`flex flex-col rounded-[28px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.98))] shadow-sm overflow-hidden ${snippetPreviewUrl && overlayBlocksResult.length > 0 ? "flex-none" : "flex-1 h-full"}`}>
-                            {snippetPreviewUrl && overlayBlocksResult.length > 0 ? (
-                              <details className="group">
-                                <summary className="flex cursor-pointer list-none items-center justify-between border-b border-card-border/70 px-4 py-3 bg-white/85 outline-none hover:bg-slate-50 transition-colors">
-                                  <div>
-                                    <p className="text-xs font-semibold tracking-[0.08em] text-text-muted flex items-center gap-2">
-                                      <svg className="w-3 h-3 transition-transform group-open:rotate-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>
-                                      查看纯文本译文
-                                    </p>
-                                  </div>
-                                </summary>
-                                <div className="px-5 py-5 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.06),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
-                                  <MarkdownRenderer
-                                    content={translationResult}
-                                    preserveLineBreaks
-                                    className="[&_p]:leading-8 [&_p]:text-[15px] [&_li]:leading-8"
-                                  />
-                                </div>
-                              </details>
-                            ) : (
-                              <>
-                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-card-border/70 px-4 py-3 bg-white/85">
-                                  <div>
-                                    <p className="text-xs font-semibold tracking-[0.08em] text-text-muted">
-                                      译文整理
-                                    </p>
-                                    <p className="mt-1 text-xs text-text-light">
-                                      聚焦中文译文与公式呈现，方便对照左侧原图通读。
-                                    </p>
-                                  </div>
-                                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
-                                    便于通读
-                                  </span>
-                                </div>
-                                <div className="flex-1 overflow-y-auto px-5 py-5 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.06),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
-                                  <MarkdownRenderer
-                                    content={translationResult}
-                                    preserveLineBreaks
-                                    className="[&_p]:leading-8 [&_p]:text-[15px] [&_li]:leading-8"
-                                  />
-                                </div>
-                              </>
-                            )}
+                            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
+                              便于通读
+                            </span>
+                          </div>
+                          <div className="flex-1 overflow-y-auto px-5 py-5 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.06),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
+                            <MarkdownRenderer
+                              content={translationResult}
+                              preserveLineBreaks
+                              className="[&_p]:leading-8 [&_p]:text-[15px] [&_li]:leading-8"
+                            />
                           </div>
                         </div>
                       </Suspense>
