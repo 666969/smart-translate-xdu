@@ -8,6 +8,7 @@ const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
 const KeywordGlossary = lazy(() => import("./components/KeywordGlossary"));
 const DocumentMindmapPanel = lazy(() => import("./components/DocumentMindmapPanel"));
 const DocumentQuizPanel = lazy(() => import("./components/DocumentQuizPanel"));
+const ExportButton = lazy(() => import("./components/ExportButton"));
 import Header from "./components/Header";
 import { BookOpen } from "lucide-react";
 
@@ -820,9 +821,20 @@ export default function Home() {
                       精准翻译
                     </h2>
                     {translationResult && !isLoading && (
-                      <span className="text-xs text-primary font-medium bg-primary/10 px-2 py-1 rounded-md">
-                        译文已就绪
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <Suspense fallback={null}>
+                          <ExportButton
+                            translation={translationResult}
+                            analysis={analysisResult}
+                            keywords={keywordsResult}
+                            mermaid={mermaidData}
+                            mode={mode}
+                          />
+                        </Suspense>
+                        <span className="text-xs text-primary font-medium bg-primary/10 px-2 py-1 rounded-md">
+                          译文已就绪
+                        </span>
+                      </div>
                     )}
                   </div>
                   <div className="p-5 min-h-[280px] flex-1">

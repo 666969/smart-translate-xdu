@@ -132,10 +132,6 @@ function normalizeLatexContent(content: string) {
       (match) => `$${match.trim()}$`
     )
     .replace(
-      /(?<!\$)(\\(?:alpha|beta|gamma|theta|phi|omega|sin|cos|tan|ln|log|int|sum)[^，。,；;\n]*(?:=|\\in)[^，。,；;\n]*)(?!\$)/gu,
-      (match) => `$${match.trim()}$`
-    )
-    .replace(
       /(?:\$+)?((?:\\forall|∀)[^。；;\n]*?(?:\\mathbb\{R\}|ℝ))\$*/gu,
       (_, candidate: string) => `$${normalizeFormulaCandidate(candidate)}$`
     );
@@ -156,7 +152,7 @@ function normalizeLatexContent(content: string) {
         return normalizeStandaloneFormulaLine(lineWithoutTrailingDollar);
       }
 
-      return line.replace(
+      return lineWithoutTrailingDollar.replace(
         /((?:[A-Za-z]\w*\([^)\n]+\)|[A-Za-z]\w*)\s*=\s*[^$\n]*?(?:\\(?:frac|int|sum|sqrt|sin|cos|tan|ln|log|alpha|beta|gamma|theta|phi|omega|mathbb)|[α-ωΑ-Ω∫∑∞])[^$\n]*)\$\$?$/gu,
         (_, candidate: string) => `$${repairFormulaBody(candidate)}$`
       );

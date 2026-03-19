@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { glossaryData, GlossaryWord } from "@/data/glossaryData";
 import { Search, Book, BookOpen, Hash, Languages } from "lucide-react";
 import Header from "../components/Header";
+import SpeakButton from "../components/SpeakButton";
 
 type LangMode = "all" | "fr-zh" | "en-zh";
 
@@ -202,8 +203,9 @@ export default function GlossaryDashboard() {
                         <div className="flex items-center mb-1.5">
                           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-1.5 py-0.5 rounded">Français</span>
                         </div>
-                        <p className="text-xl font-bold text-blue-900 leading-tight group-hover:text-blue-700 transition-colors">
+                        <p className="text-xl font-bold text-blue-900 leading-tight group-hover:text-blue-700 transition-colors flex items-center gap-2">
                           {item.word.term_fr}
+                          <SpeakButton text={item.word.term_fr} lang="fr-FR" size={16} />
                         </p>
                       </div>
                     )}

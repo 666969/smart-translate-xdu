@@ -92,6 +92,22 @@ export default function Header() {
               >
                 随堂同传
               </Link>
+              <Link
+                href="/notebook"
+                className={`transition-colors duration-200 ${
+                  pathname === "/notebook" ? "text-primary font-semibold" : "text-text-muted hover:text-primary"
+                }`}
+              >
+                生词本
+              </Link>
+              <Link
+                href="/pdf"
+                className={`transition-colors duration-200 ${
+                  pathname === "/pdf" ? "text-primary font-semibold" : "text-text-muted hover:text-primary"
+                }`}
+              >
+                文献精读
+              </Link>
               <button
                 onClick={() => setIsHelpOpen(true)}
                 className="text-text-muted hover:text-primary transition-colors duration-200"
@@ -139,6 +155,22 @@ export default function Header() {
                 <li className="flex items-start gap-2">
                   <span className="text-primary mt-0.5">🔹</span> 
                   <span><strong>专业名词库：</strong>我们梳理了海量中外英理工科词汇（如 STM32, SAR 等），欢迎随时检索学习。</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>生词本 & 错题集：</strong>关键词旁点 ⭐ 收藏到生词本，测验答错自动收录错题本，支持艾宾浩斯闪卡复习。</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>文献精读：</strong>上传完整 PDF 课件，AI 自动生成章节摘要，支持对文献内容任意追问。</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>法语朗读：</strong>每个法语术语旁都有 🔊 按钮，点击即可听到标准法语发音。</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>导出笔记：</strong>翻译完成后可一键导出 Markdown 格式的学习笔记。</span>
                 </li>
               </ul>
             </div>
