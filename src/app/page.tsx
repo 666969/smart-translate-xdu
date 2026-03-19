@@ -3,12 +3,19 @@
 import { useState, useRef, useCallback, useEffect, lazy, Suspense } from "react";
 import type { QuizItem, QuizLang } from "./components/DocumentQuizPanel";
 import type { KeywordItem } from "./components/KeywordGlossary";
+import {
+  normalizeTranslationLayout,
+  type TranslationLayoutBlock,
+} from "@/lib/translationLayout";
 
 const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
 const KeywordGlossary = lazy(() => import("./components/KeywordGlossary"));
 const DocumentMindmapPanel = lazy(() => import("./components/DocumentMindmapPanel"));
 const DocumentQuizPanel = lazy(() => import("./components/DocumentQuizPanel"));
 const ExportButton = lazy(() => import("./components/ExportButton"));
+const TextbookTranslationRenderer = lazy(
+  () => import("./components/TextbookTranslationRenderer")
+);
 import Header from "./components/Header";
 import { BookOpen } from "lucide-react";
 
@@ -227,6 +234,7 @@ export default function Home() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [translationResult, setTranslationResult] = useState<string | null>(null);
+  const [translationLayoutResult, setTranslationLayoutResult] = useState<TranslationLayoutBlock[]>([]);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [keywordsResult, setKeywordsResult] = useState<string | null>(null);
   const [keywordItemsResult, setKeywordItemsResult] = useState<KeywordItem[]>([]);
@@ -355,6 +363,7 @@ export default function Home() {
     setIsLoading(true);
     setErrorMessage(null);
     setTranslationResult(null);
+    setTranslationLayoutResult([]);
     setAnalysisResult(null);
     setKeywordsResult(null);
     setKeywordItemsResult([]);
@@ -403,6 +412,7 @@ export default function Home() {
       // Decode JSON fields based on the modes
       if (mode === "document") {
         setTranslationResult(null);
+        setTranslationLayoutResult([]);
         setAnalysisResult(null);
         setKeywordsResult(null);
         setKeywordItemsResult([]);
@@ -411,6 +421,9 @@ export default function Home() {
         setQuizData(data.quiz || null);
       } else {
         setTranslationResult(data.translation || null);
+        setTranslationLayoutResult(
+          normalizeTranslationLayout(data.translation_layout)
+        );
         setAnalysisResult(data.analysis || null);
         setKeywordsResult(data.keywords || null);
         setKeywordItemsResult(normalizeKeywordItems(data.keyword_items));
@@ -870,10 +883,9 @@ export default function Home() {
                             </span>
                           </div>
                           <div className="flex-1 overflow-y-auto px-5 py-5 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.06),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
-                            <MarkdownRenderer
-                              content={translationResult}
-                              preserveLineBreaks
-                              className="[&_p]:leading-8 [&_p]:text-[15px] [&_li]:leading-8"
+                            <TextbookTranslationRenderer
+                              layout={translationLayoutResult}
+                              fallbackContent={translationResult}
                             />
                           </div>
                         </div>
@@ -940,7 +952,7 @@ export default function Home() {
                             </span>
                           </div>
                           <div className="flex-1 overflow-y-auto px-5 py-5 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.08),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
-                            <MarkdownRenderer content={analysisResult} className="[&_p]:leading-8 [&_p]:text-[15px] [&_li]:leading-8" />
+                            <MarkdownRenderer content={analysisResult} compact className="[&_p]:leading-[1.85] [&_p]:text-[15px] [&_li]:leading-[1.8] [&_li]:text-[15px]" />
                           </div>
                         </div>
                       </Suspense>

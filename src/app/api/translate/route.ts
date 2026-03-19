@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import {
+  normalizeTranslationLayout,
+  synthesizeTranslationLayoutFromTranslation,
+  type TranslationLayoutBlock,
+} from "@/lib/translationLayout";
 
 interface DocumentQuizItem {
   question_fr: string;
@@ -42,15 +47,12 @@ interface SnippetResponse {
   keywords: string;
   keyword_items: SnippetKeywordItem[];
   overlay_blocks: SnippetOverlayBlock[];
+  translation_layout: TranslationLayoutBlock[];
 }
 
 interface DocumentResponse {
   mermaid: string;
   quiz: DocumentQuizItem[];
-}
-
-interface ValidateSnippetOptions {
-  requireAnalysis?: boolean;
 }
 
 type UserContent =
@@ -61,7 +63,6 @@ const STRICT_JSON_PREFIX = `你是一个无情的、顶级的理工科翻译专�
 【最高指令】：除必要的数学公式和原专有名词外，所有输出的文本内容（包括翻译和解析）必须、绝对、强制使用简体中文！ 不要输出任何废话，只输出合法的 JSON 数据。
 禁止输出 Markdown 代码块、解释性前后缀、注释、标题、寒暄、道歉，禁止输出任何 JSON 之外的文本。`;
 
-const SNIPPET_KEYWORD_LINE_PATTERN = /^[^:\n()]+ \([^)]+\) : .+$/u;
 const FRENCH_TERM_PATTERN = /^[A-Za-zÀ-ÖØ-öø-ÿŒœÆæÇç' -]+$/u;
 const FRENCH_STOPWORDS = new Set([
   "le", "la", "les", "un", "une", "des", "du", "de", "d", "et", "ou", "est",
@@ -169,7 +170,7 @@ function getLiveSystemPrompt() {
   3. 保持极低的延迟风格，遇到专业学术词汇，请凭借电子工程领域知识进行精准翻译。直接输出译文文本。`;
 }
 
-function getSnippetTranslationSystemPrompt(hasImageInput: boolean) {
+function getSnippetTranslationSystemPrompt() {
   return `${STRICT_JSON_PREFIX}
 
 你正在执行完整的 Snippet（片段速译）任务。
@@ -185,7 +186,18 @@ function getSnippetTranslationSystemPrompt(hasImageInput: boolean) {
       "definition_zh": "..."
     }
   ],
-  "overlay_blocks": []
+  "overlay_blocks": [],
+  "translation_layout": [
+    { "type": "page_title", "text": "..." },
+    { "type": "section_title", "text": "..." },
+    { "type": "subtitle", "text": "..." },
+    { "type": "paragraph", "text": "..." },
+    { "type": "formula", "text": "$$...$$" },
+    { "type": "formula_box", "items": ["$$...$$"] },
+    { "type": "bullet_list", "items": ["...", "..."] },
+    { "type": "key_value_list", "pairs": [{ "label": "...", "value": "..." }] },
+    { "type": "note", "text": "..." }
+  ]
 }
 
 硬性规则：
@@ -199,7 +211,14 @@ function getSnippetTranslationSystemPrompt(hasImageInput: boolean) {
 8. "keyword_items" 必须严格输出 3 到 5 个对象。每个对象采用 {"term_fr":"法语","term_zh":"中文","definition_zh":"定义"}。
 9. "keywords" 必须是 "keyword_items" 的逐行串联结果，格式严格为：法语词汇 (中文解释) : 具体的中文定义。
 10. "overlay_blocks" 永远返回空数组 []。
-11. 不要输出任何 JSON 之外的内容。`;
+11. "translation_layout" 必须按照原图阅读顺序输出结构化版式块，只能使用以下 type：page_title、section_title、subtitle、paragraph、formula、formula_box、bullet_list、key_value_list、note。
+12. page_title 用于章标题或页面顶部主标题；section_title 用于小节标题；subtitle 用于次级说明标题。
+13. 独立公式必须优先输出为 formula 或 formula_box，不要把独立公式混进 paragraph。含分式、积分、居中展示的大公式优先使用 formula_box。
+14. 原图中的项目符号、列表、定义项（如 $\\omega_0$、$m$、$Q$）必须尽量分别整理成 bullet_list 或 key_value_list，而不是写成松散大段落。
+15. key_value_list 的 pairs 中，label 用术语本身，value 用对应的中文解释；如术语带公式，必须保留公式。
+16. 所有数学公式、变量和希腊字母在 translation_layout 中也必须遵守 LaTeX 包裹规范；绝对禁止裸输出 LaTeX 命令。
+17. 在输出最终 JSON 前，你必须自检 translation 和 translation_layout：检查是否存在裸露的 \\int、\\frac、\\sum、\\alpha、\\theta、\\mathbb，以及不成对的 $ / $$；如有必须先修正。
+18. 不要输出任何 JSON 之外的内容。`;
 }
 
 function getDocumentSystemPrompt() {
@@ -441,17 +460,6 @@ function stripLatexBlocks(value: string) {
     .replace(/\$[^$\n]+\$/g, " ");
 }
 
-function containsLikelyBareFormula(value: string) {
-  const plain = stripLatexBlocks(value);
-
-  return (
-    /[α-ωΑ-Ω∫∑∞≈≠≤≥±→←↔∂∇√]/u.test(plain) ||
-    /\b[a-zA-Z]\w*\([^)\n]+\)\s*=\s*[^，。；：:\n]+/u.test(plain) ||
-    /\b(?:sin|cos|tan|cot|log|ln|exp|max|min)\s*\([^)\n]+\)/u.test(plain) ||
-    /\b[a-zA-Z]\s*=\s*[-+*/() a-zA-Z0-9α-ωΑ-Ω]+/u.test(plain)
-  );
-}
-
 function wrapObviousInlineMath(text: string) {
   const segments = text.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g);
 
@@ -515,34 +523,6 @@ function repairLatexArtifacts(text: string) {
       );
     })
     .join("");
-}
-
-function hasChineseInsideMathBlock(value: string) {
-  const blocks = value.match(/\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g) ?? [];
-  return blocks.some((block) => hasChineseText(block));
-}
-
-function isStrictKeywordLine(line: string) {
-  if (!SNIPPET_KEYWORD_LINE_PATTERN.test(line)) {
-    return false;
-  }
-
-  const [left, definition] = line.split(" : ");
-  if (!left || !definition) {
-    return false;
-  }
-
-  const match = left.match(/^(.*) \((.*)\)$/u);
-  if (!match) {
-    return false;
-  }
-
-  const [, term, explanation] = match;
-  return (
-    FRENCH_TERM_PATTERN.test(term.trim()) &&
-    hasChineseText(explanation.trim()) &&
-    hasChineseText(definition.trim())
-  );
 }
 
 function normalizeKeywordItems(value: unknown) {
@@ -674,15 +654,50 @@ function normalizeOverlayBlocks(value: unknown) {
     .slice(0, 14);
 }
 
+function repairTranslationLayout(layout: TranslationLayoutBlock[]): TranslationLayoutBlock[] {
+  const repairedBlocks = layout.map<TranslationLayoutBlock>((block) => {
+      const normalizeLayoutText = (value: string) =>
+        repairLatexArtifacts(wrapObviousInlineMath(value));
+
+      return {
+        ...block,
+        text: block.text ? normalizeLayoutText(block.text) : undefined,
+        items: block.items?.map(normalizeLayoutText),
+        pairs: block.pairs?.map((pair) => ({
+          label: normalizeLayoutText(pair.label),
+          value: normalizeLayoutText(pair.value),
+        })),
+      };
+    });
+
+  return repairedBlocks.filter((block) => {
+      if (block.type === "bullet_list" || block.type === "formula_box") {
+        return Boolean(block.items && block.items.length > 0);
+      }
+
+      if (block.type === "key_value_list") {
+        return Boolean(block.pairs && block.pairs.length > 0);
+      }
+
+      return Boolean(block.text);
+    });
+}
+
 function normalizeSnippetResponse(raw: Record<string, unknown>): SnippetResponse {
   const keywordItemsFromArray = normalizeKeywordItems(raw.keyword_items);
   const normalizedKeywordItems =
     keywordItemsFromArray.length > 0
       ? keywordItemsFromArray
       : parseKeywordItemsFromText(normalizeText(raw.keywords));
+  const normalizedTranslation = repairLatexArtifacts(
+    wrapObviousInlineMath(normalizeText(raw.translation))
+  );
+  const translationLayout = repairTranslationLayout(
+    normalizeTranslationLayout(raw.translation_layout)
+  );
 
   return {
-    translation: repairLatexArtifacts(wrapObviousInlineMath(normalizeText(raw.translation))),
+    translation: normalizedTranslation,
     analysis: normalizeText(raw.analysis),
     keywords:
       normalizedKeywordItems.length > 0
@@ -690,6 +705,12 @@ function normalizeSnippetResponse(raw: Record<string, unknown>): SnippetResponse
         : normalizeText(raw.keywords),
     keyword_items: normalizedKeywordItems,
     overlay_blocks: normalizeOverlayBlocks(raw.overlay_blocks),
+    translation_layout:
+      translationLayout.length > 0
+        ? translationLayout
+        : repairTranslationLayout(
+            synthesizeTranslationLayoutFromTranslation(normalizedTranslation)
+          ),
   };
 }
 
@@ -774,48 +795,6 @@ function normalizeDocumentResponse(raw: Record<string, unknown>): DocumentRespon
   }
 
   return response;
-}
-
-function validateSnippetResponse(
-  response: SnippetResponse,
-  options: ValidateSnippetOptions = {}
-) {
-  const issues: string[] = [];
-  const keywordLines = response.keywords
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const requireAnalysis = options.requireAnalysis !== false;
-
-  if (!response.translation) {
-    issues.push("translation 字段缺失或为空");
-  } else if (!hasChineseText(response.translation)) {
-    issues.push("translation 必须包含简体中文翻译内容");
-  }
-
-  if (requireAnalysis && !response.analysis) {
-    issues.push("analysis 字段缺失或为空");
-  } else if (response.analysis && !hasChineseText(response.analysis)) {
-    issues.push("analysis 必须是纯中文深度解析");
-  }
-
-  if (response.translation && containsLikelyBareFormula(response.translation)) {
-    issues.push("translation 中存在未使用 LaTeX $...$ 或 $$...$$ 包裹的公式");
-  }
-
-  if (response.translation && hasChineseInsideMathBlock(response.translation)) {
-    issues.push("translation 的 LaTeX 数学块中不能包裹中文说明文字");
-  }
-
-  if (response.keyword_items.length < 3 || response.keyword_items.length > 5) {
-    issues.push("keyword_items 必须严格输出 3 到 5 个词条");
-  }
-
-  if (response.keywords && keywordLines.some((line) => !isStrictKeywordLine(line))) {
-    issues.push("keywords 的每一行都必须符合“法语词汇 (中文解释) : 具体的中文定义”格式");
-  }
-
-  return issues;
 }
 
 function extractTextFromUserContent(userContent: UserContent) {
@@ -950,12 +929,7 @@ async function requestJsonCompletion(
 
 async function parseAndValidateSnippetResponse(
   aiResponse: string,
-  userContent: UserContent,
-  hasImageInput: boolean,
-  options: {
-    includeAnalysis?: boolean;
-    model?: string;
-  } = {}
+  userContent: UserContent
 ) {
   let parsed = normalizeSnippetResponse(parseJsonObject(aiResponse));
 
@@ -1077,7 +1051,7 @@ export async function POST(request: NextRequest) {
       const snippetModel = deepMode ? PRO_MODEL : FLASH_MODEL;
       const completion = await requestJsonCompletion(
         [
-          { role: "system", content: getSnippetTranslationSystemPrompt(hasImageInput) },
+          { role: "system", content: getSnippetTranslationSystemPrompt() },
           { role: "user", content: userContent },
         ],
         0.15,
@@ -1097,12 +1071,7 @@ export async function POST(request: NextRequest) {
 
       responsePayload = await parseAndValidateSnippetResponse(
         aiResponse,
-        userContent,
-        hasImageInput,
-        {
-          includeAnalysis: true,
-          model: snippetModel,
-        }
+        userContent
       );
     } else if (mode === "document") {
       responsePayload = await generateDocumentResponse(userContent, deepMode);
