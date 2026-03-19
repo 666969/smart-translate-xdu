@@ -15,11 +15,25 @@ interface MarkdownRendererProps {
 const LATEX_COMMAND_PATTERN =
   /\\(?:frac|int|sum|sqrt|sin|cos|tan|ln|log|forall|exists|infty|alpha|beta|gamma|theta|phi|omega|mathbb|mathrm|mathcal|operatorname|cdot|times|leq|geq|neq|to|rightarrow|left|right)\b/u;
 
+function countUnescapedDollarSigns(text: string) {
+  let count = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "$" && text[index - 1] !== "\\") {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
 function repairFormulaBody(candidate: string) {
   return candidate
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
     .replace(/\$\$/g, "")
     .replace(/^[$\s]+|[$\s]+$/g, "")
+    .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
+    .replace(/\$(?=\})/gu, "")
     .replace(/∀/g, "\\forall ")
     .replace(/∃/g, "\\exists ")
     .replace(/∈/g, "\\in ")
@@ -51,6 +65,21 @@ function repairFormulaBody(candidate: string) {
     .replace(/(^|[\s(,，;；:：])log(?=\s*[\[(\\])/gu, "$1\\log")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function looksLikeInlineFormulaCandidate(candidate: string) {
+  const trimmed = repairFormulaBody(candidate);
+
+  if (!trimmed || /[\u4e00-\u9fff]/u.test(trimmed)) {
+    return false;
+  }
+
+  return (
+    LATEX_COMMAND_PATTERN.test(trimmed) ||
+    /[=^_{}|]/u.test(trimmed) ||
+    /[∀∃∈ℝα-ωΑ-Ω∫∑∞≈≠≤≥±]/u.test(trimmed) ||
+    /\b[A-Za-z]\w*\([^)\n]+\)/u.test(trimmed)
+  );
 }
 
 function looksLikeStandaloneFormulaLine(line: string) {
@@ -96,6 +125,20 @@ function normalizeStandaloneFormulaLine(line: string) {
   }
 
   return `$$${repaired}$$`;
+}
+
+function closeDanglingInlineFormula(line: string) {
+  if (countUnescapedDollarSigns(line) % 2 === 0) {
+    return line;
+  }
+
+  return line.replace(/(?<!\\)\$([^$\n]+)$/u, (match, candidate: string) => {
+    if (!looksLikeInlineFormulaCandidate(candidate)) {
+      return match;
+    }
+
+    return `$${repairFormulaBody(candidate)}$`;
+  });
 }
 
 function normalizeLatexContent(content: string) {
@@ -147,13 +190,17 @@ function normalizeLatexContent(content: string) {
       // 修复大模型常见错误：行尾有孤立的 $$ 但行首没有对应的 $$
       // 例如："s(t) =\int_{-\infty}^{\infty} h(\theta) d\theta$$"
       // 先剥除行尾多余的 $$，再让 looksLikeStandaloneFormulaLine 正常识别
-      const lineWithoutTrailingDollar = line.replace(/\$\$\s*$/, "").replace(/\$\s*$/, "");
+      const lineWithoutTrailingDollar = line
+        .replace(/\$\$\s*$/, "")
+        .replace(/\$\s*$/, "")
+        .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
+        .replace(/\$(?=\})/gu, "");
 
       if (looksLikeStandaloneFormulaLine(lineWithoutTrailingDollar)) {
         return normalizeStandaloneFormulaLine(lineWithoutTrailingDollar);
       }
 
-      return lineWithoutTrailingDollar.replace(
+      return closeDanglingInlineFormula(lineWithoutTrailingDollar).replace(
         /((?:[A-Za-z]\w*\([^)\n]+\)|[A-Za-z]\w*)\s*=\s*[^$\n]*?(?:\\(?:frac|int|sum|sqrt|sin|cos|tan|ln|log|alpha|beta|gamma|theta|phi|omega|mathbb)|[α-ωΑ-Ω∫∑∞])[^$\n]*)\$\$?$/gu,
         (_, candidate: string) => `$${repairFormulaBody(candidate)}$`
       );
