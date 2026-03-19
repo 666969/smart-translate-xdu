@@ -29,9 +29,31 @@ const SUMMARY_PROMPT = `你是"智译西电"平台的课件摘要助手。请为
 3. 只输出摘要列表，不要输出其他内容
 4. 如果内容是数学公式或图表为主的页面，简要描述其主题`;
 
+const PDF_SCAN_CHAT_PROMPT = `你是"智译西电"平台的扫描版 PDF 文献解读助教。你将收到若干页扫描版 PDF 的页图，以及用户的问题。
+
+你的工作：
+1. 只根据提供的页图内容回答，不要假装理解整本文献。
+2. 用简体中文回答，并适合理工科学生阅读。
+3. 遇到公式、定理、电路、信号处理等内容时，做专业解释。
+4. 所有数学公式使用 LaTeX 语法，行内公式用 $...$，独立公式用 $$...$$。
+5. 如果用户的问题超出当前页或当前页码范围，请明确说明需要用户切换页码范围。
+6. 不要重复用户问题，直接回答。`;
+
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+function usesZhipuCompatibility() {
+  return (process.env.OPENAI_BASE_URL || "").includes("open.bigmodel.cn");
+}
+
+function normalizeScanImageUrl(url: string) {
+  if (usesZhipuCompatibility()) {
+    return url.replace(/^data:[^;]+;base64,/i, "");
+  }
+
+  return url;
 }
 
 export async function POST(request: NextRequest) {
@@ -47,12 +69,72 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { pdfText, messages, action, deepMode } = body as {
+    const { pdfText, messages, action, deepMode, mode, pageImages, pageNumbers } = body as {
       pdfText?: string;
       messages?: ChatMessage[];
       action?: "chat" | "summarize";
       deepMode?: boolean;
+      mode?: "text" | "scan_pages";
+      pageImages?: string[];
+      pageNumbers?: number[];
     };
+
+    if (mode === "scan_pages") {
+      if (!messages || messages.length === 0) {
+        return NextResponse.json(
+          { error: "缺少扫描版 PDF 的对话消息" },
+          { status: 400 }
+        );
+      }
+
+      if (!Array.isArray(pageImages) || pageImages.length === 0) {
+        return NextResponse.json(
+          { error: "缺少扫描版 PDF 页图" },
+          { status: 400 }
+        );
+      }
+
+      const model = deepMode ? PRO_MODEL : FLASH_MODEL;
+      const pageLabel =
+        Array.isArray(pageNumbers) && pageNumbers.length > 0
+          ? `第 ${pageNumbers[0]}${pageNumbers.length > 1 ? `-${pageNumbers[pageNumbers.length - 1]}` : ""} 页`
+          : "当前页范围";
+
+      const scanMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+        { role: "system", content: PDF_SCAN_CHAT_PROMPT },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `以下是扫描版 PDF 的 ${pageLabel} 页图。请只基于这些页的内容回答后续问题，不要假装阅读过整本文献。`,
+            },
+            ...pageImages.map((imageUrl) => ({
+              type: "image_url" as const,
+              image_url: { url: normalizeScanImageUrl(imageUrl) },
+            })),
+          ],
+        },
+        {
+          role: "assistant",
+          content: `我已加载 ${pageLabel} 的页图，请围绕这些页面内容提问。`,
+        },
+        ...messages.map((message) => ({
+          role: message.role as "user" | "assistant",
+          content: message.content,
+        })),
+      ];
+
+      const completion = await openai.chat.completions.create({
+        model,
+        messages: scanMessages,
+        temperature: 0.3,
+      });
+
+      const reply =
+        completion.choices[0]?.message?.content || "抱歉，无法生成回复。";
+      return NextResponse.json({ reply });
+    }
 
     if (!pdfText) {
       return NextResponse.json(
