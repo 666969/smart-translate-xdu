@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { CircleHelp } from "lucide-react";
+import AuthControls from "./auth/AuthControls";
 
 // Logo Icon extracted from page.tsx
 export function LogoIcon() {
@@ -39,14 +41,6 @@ export function LogoIcon() {
 export default function Header() {
   const pathname = usePathname();
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const handleLoginClick = () => {
-    setToastMessage("测试版暂未开放注册，请直接体验核心功能🌟");
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3000);
-  };
 
   return (
     <>
@@ -115,12 +109,18 @@ export default function Header() {
                 使用帮助
               </button>
               <div className="h-5 w-px bg-card-border" />
+              <AuthControls />
+            </div>
+
+            <div className="flex items-center gap-2 md:hidden">
               <button
-                onClick={handleLoginClick}
-                className="px-4 py-1.5 rounded-full bg-gradient-to-r from-primary to-primary-light text-white text-sm font-medium hover:shadow-lg hover:shadow-primary/25 transition-all duration-300"
+                onClick={() => setIsHelpOpen(true)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-card-border/70 bg-white/80 text-text-muted shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:text-primary"
+                aria-label="打开使用帮助"
               >
-                登录
+                <CircleHelp size={18} />
               </button>
+              <AuthControls compact />
             </div>
           </div>
         </div>
@@ -186,15 +186,6 @@ export default function Header() {
         </div>
       )}
 
-      {/* --- Login Toast --- */}
-      {toastMessage && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-fade-in-down">
-          <div className="glass px-6 py-3 rounded-full border border-primary/20 shadow-lg shadow-primary/5 flex items-center gap-3">
-            <svg className="text-primary shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-            <span className="text-sm font-medium text-gray-800">{toastMessage}</span>
-          </div>
-        </div>
-      )}
     </>
   );
 }

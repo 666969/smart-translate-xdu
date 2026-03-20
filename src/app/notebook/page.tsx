@@ -23,9 +23,11 @@ import {
   getAllWrongAnswers,
   resolveWrongAnswer,
   removeWrongAnswer,
+  resolveOwnerId,
 } from "@/lib/db";
 import type { VocabItem, WrongAnswerItem } from "@/lib/db";
 import { useAppSession } from "../components/AppSessionProvider";
+import { useAuth } from "@/hooks/useAuth";
 
 type TabMode = "vocab" | "wrong";
 
@@ -33,10 +35,12 @@ type TabMode = "vocab" | "wrong";
 
 function FlashcardReview({
   cards,
+  ownerId,
   onClose,
   onReviewed,
 }: {
   cards: VocabItem[];
+  ownerId: string;
   onClose: () => void;
   onReviewed: () => void;
 }) {
@@ -49,7 +53,7 @@ function FlashcardReview({
 
   const handleResponse = async (remembered: boolean) => {
     if (!current?.id) return;
-    await markVocabReviewed(current.id, remembered);
+    await markVocabReviewed(ownerId, current.id, remembered);
     setReviewedCount((c) => c + 1);
 
     if (isLast) {
@@ -150,10 +154,12 @@ function FlashcardReview({
 
 function ReQuizModal({
   item,
+  ownerId,
   onClose,
   onResolved,
 }: {
   item: WrongAnswerItem;
+  ownerId: string;
   onClose: () => void;
   onResolved: () => void;
 }) {
@@ -165,7 +171,7 @@ function ReQuizModal({
   const handleSubmit = async () => {
     setShowResult(true);
     if (isCorrect && item.id) {
-      await resolveWrongAnswer(item.id);
+      await resolveWrongAnswer(ownerId, item.id);
       setTimeout(() => {
         onResolved();
         onClose();
@@ -255,6 +261,7 @@ function ReQuizModal({
 
 export default function NotebookPage() {
   const { notebook } = useAppSession();
+  const { uid } = useAuth();
   const {
     tab,
     setTab,
@@ -265,6 +272,7 @@ export default function NotebookPage() {
     flippedCardIds,
     setFlippedCardIds,
   } = notebook;
+  const ownerId = resolveOwnerId(uid);
   const [vocabs, setVocabs] = useState<VocabItem[]>([]);
   const [dueVocabs, setDueVocabs] = useState<VocabItem[]>([]);
   const [wrongAnswers, setWrongAnswers] = useState<WrongAnswerItem[]>([]);
@@ -272,9 +280,9 @@ export default function NotebookPage() {
   const loadData = useCallback(async () => {
     try {
       const [allVocabs, due, allWrong] = await Promise.all([
-        getAllVocabs(),
-        getVocabsDueForReview(),
-        getAllWrongAnswers(),
+        getAllVocabs(ownerId),
+        getVocabsDueForReview(ownerId),
+        getAllWrongAnswers(ownerId),
       ]);
       setVocabs(allVocabs);
       setDueVocabs(due);
@@ -282,19 +290,25 @@ export default function NotebookPage() {
     } catch (e) {
       console.error("Failed to load notebook data:", e);
     }
-  }, []);
+  }, [ownerId]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    setFlippedCardIds([]);
+    setRequizItemId(null);
+    setIsReviewing(false);
+  }, [ownerId, setFlippedCardIds, setIsReviewing, setRequizItemId]);
+
   const handleDeleteVocab = async (id: number) => {
-    await removeVocab(id);
+    await removeVocab(ownerId, id);
     loadData();
   };
 
   const handleDeleteWrong = async (id: number) => {
-    await removeWrongAnswer(id);
+    await removeWrongAnswer(ownerId, id);
     loadData();
   };
 
@@ -580,6 +594,7 @@ export default function NotebookPage() {
       {isReviewing && dueVocabs.length > 0 && (
         <FlashcardReview
           cards={dueVocabs}
+          ownerId={ownerId}
           onClose={() => setIsReviewing(false)}
           onReviewed={loadData}
         />
@@ -589,6 +604,7 @@ export default function NotebookPage() {
       {requizItem && (
         <ReQuizModal
           item={requizItem}
+          ownerId={ownerId}
           onClose={() => setRequizItemId(null)}
           onResolved={loadData}
         />

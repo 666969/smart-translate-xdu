@@ -2,7 +2,8 @@
 
 import { useState, useCallback } from "react";
 import MarkdownRenderer from "./MarkdownRenderer";
-import { addWrongAnswer } from "@/lib/db";
+import { addWrongAnswer, resolveOwnerId } from "@/lib/db";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface QuizItem {
   question_fr: string;
@@ -98,10 +99,12 @@ function QuizQuestion({
   q,
   idx,
   quizLang,
+  ownerId,
 }: {
   q: QuizItem;
   idx: number;
   quizLang: QuizLang;
+  ownerId: string;
 }) {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -120,7 +123,7 @@ function QuizQuestion({
       // If wrong, auto-save to wrong answer book
       if (option !== correctAnswer && !wrongSaved) {
         try {
-          await addWrongAnswer({
+          await addWrongAnswer(ownerId, {
             question_fr: q.question_fr,
             question_zh: q.question_zh,
             question_en: q.question_en,
@@ -138,7 +141,7 @@ function QuizQuestion({
         }
       }
     },
-    [showAnswer, correctAnswer, wrongSaved, q]
+    [correctAnswer, ownerId, q, showAnswer, wrongSaved]
   );
 
   return (
@@ -243,6 +246,9 @@ export default function DocumentQuizPanel({
   quizLang,
   onQuizLangChange,
 }: DocumentQuizPanelProps) {
+  const { uid } = useAuth();
+  const ownerId = resolveOwnerId(uid);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-2 px-1">
@@ -278,9 +284,9 @@ export default function DocumentQuizPanel({
         </div>
       </div>
 
-      {quizData.map((q, idx) => (
-        <QuizQuestion key={idx} q={q} idx={idx} quizLang={quizLang} />
-      ))}
-    </div>
+        {quizData.map((q, idx) => (
+          <QuizQuestion key={idx} q={q} idx={idx} quizLang={quizLang} ownerId={ownerId} />
+        ))}
+      </div>
   );
 }

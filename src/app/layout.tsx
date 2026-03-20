@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppSessionProvider } from "./components/AppSessionProvider";
+import { AuthProvider } from "./components/auth/AuthProvider";
 
 export const metadata: Metadata = {
   title: "智译西电 - 中外合作教学翻译助手",
@@ -29,7 +30,9 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <AppSessionProvider>{children}</AppSessionProvider>
+        <AuthProvider>
+          <AppSessionProvider>{children}</AppSessionProvider>
+        </AuthProvider>
       </body>
     </html>
   );

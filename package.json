@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "firebase": "^12.11.0",
     "katex": "^0.16.38",
     "lucide-react": "^0.577.0",
     "mermaid": "^11.13.0",

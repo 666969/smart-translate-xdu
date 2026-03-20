@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Star } from "lucide-react";
 import SpeakButton from "./SpeakButton";
-import { addVocab, isVocabExists } from "@/lib/db";
+import { addVocab, isVocabExists, resolveOwnerId } from "@/lib/db";
+import { useAuth } from "@/hooks/useAuth";
 
 export interface KeywordItem {
   term_fr: string;
@@ -50,19 +51,37 @@ function parseKeywordItems(content?: string) {
     .filter((item): item is KeywordItem => Boolean(item));
 }
 
-function CollectButton({ item }: { item: KeywordItem }) {
+function CollectButton({ item, ownerId }: { item: KeywordItem; ownerId: string }) {
   const [saved, setSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void isVocabExists(ownerId, item.term_fr)
+      .then((exists) => {
+        if (isMounted) {
+          setSaved(exists);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to check vocab exists:", error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [item.term_fr, ownerId]);
 
   const handleCollect = useCallback(async () => {
     if (saved) return;
     try {
-      const exists = await isVocabExists(item.term_fr);
+      const exists = await isVocabExists(ownerId, item.term_fr);
       if (exists) {
         setSaved(true);
         return;
       }
-      await addVocab({
+      await addVocab(ownerId, {
         term_fr: item.term_fr,
         term_zh: item.term_zh,
         definition_zh: item.definition_zh,
@@ -74,7 +93,7 @@ function CollectButton({ item }: { item: KeywordItem }) {
     } catch (e) {
       console.error("Failed to save vocab:", e);
     }
-  }, [item, saved]);
+  }, [item, ownerId, saved]);
 
   return (
     <div className="relative">
@@ -102,6 +121,8 @@ export default function KeywordGlossary({
   content,
   items,
 }: KeywordGlossaryProps) {
+  const { uid } = useAuth();
+  const ownerId = resolveOwnerId(uid);
   const normalizedItems = items && items.length > 0 ? items : parseKeywordItems(content);
 
   if (normalizedItems.length === 0) {
@@ -126,7 +147,7 @@ export default function KeywordGlossary({
               {item.term_zh}
             </span>
             <div className="ml-auto">
-              <CollectButton item={item} />
+              <CollectButton item={item} ownerId={ownerId} />
             </div>
           </div>
           <p className="mt-1.5 text-sm leading-7 text-slate-600">
