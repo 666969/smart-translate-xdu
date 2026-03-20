@@ -206,16 +206,21 @@ function getSnippetTranslationSystemPrompt() {
 3. 如果原文中有电路图或其他非文本图表，请在你翻译输出中认为它们出现的位置插入适当换行，保持整体文字上下结构对应。
 4. 所有数学公式、数学符号、变量、上下标、希腊字母、积分、微分、极限、求和、向量、矩阵、不等式等内容，必须严格使用 LaTeX 语法包裹。行内公式必须使用单个 $...$，独立公式（例如图中的 H(p) 表达式）必须使用 $$...$$，并单独占一行或独占一行居中。
 5. 绝对禁止裸输出任何 LaTeX 命令。凡是包含 \\frac、\\int、\\sum、\\sqrt、\\sin、\\cos、\\tan、\\ln、\\log、\\alpha、\\beta、\\gamma、\\theta、\\phi、\\omega 等的内容，都必须放在 $...$ 或 $$...$$ 中。
-6. 如果一句话中同时出现中文与公式，中文必须保留在正文中，公式部分只用 $...$ 包裹，不要让 LaTeX 命令裸露在中文句子里。
-7. "analysis" 必须是纯中文深度解析，解释核心原理、公式含义与适用场景；禁止输出法语整句，禁止空话套话。
-8. "keyword_items" 必须严格输出 3 到 5 个对象。每个对象采用 {"term_fr":"法语","term_zh":"中文","definition_zh":"定义"}。
-9. "keywords" 必须是 "keyword_items" 的逐行串联结果，格式严格为：法语词汇 (中文解释) : 具体的中文定义。
-10. "overlay_blocks" 永远返回空数组 []。
-11. "translation_layout" 必须按照原图阅读顺序输出结构化版式块，只能使用以下 type：page_title、section_title、subtitle、paragraph、formula、formula_box、bullet_list、key_value_list、note。
-12. page_title 用于章标题或页面顶部主标题；section_title 用于小节标题；subtitle 用于次级说明标题。
-13. 独立公式必须优先输出为 formula 或 formula_box，不要把独立公式混进 paragraph。含分式、积分、居中展示的大公式优先使用 formula_box。
-14. 原图中的项目符号、列表、定义项（如 $\\omega_0$、$m$、$Q$）必须尽量分别整理成 bullet_list 或 key_value_list，而不是写成松散大段落。
-15. key_value_list 的 pairs 中，label 用术语本身，value 用对应的中文解释；如术语带公式，必须保留公式。
+6. 如果一句话中同时出现中文与公式，中文必须保留在正文中，公式部分只用 $...$ 包裹，不要让 LaTeX 命令裸�1. mermaid 必须是纯正的 flowchart TD 格式。必须严格使用换行符 (\n) 独立声明每一个节点和每一条连线。绝对禁止把连线写在同一行（会引发 Expecting 'NEWLINE' 错误）。
+2. 内部节点ID (如 A, B1) 只能使用纯英文字母和数字，绝对禁止包含连字符(-)、下划线或其他符号。所有的节点文字必须百分之百使用双引号包裹，例如 A["任意文字"]。
+3. 节点内部的文本绝对不能出现双引号 (")，如果需要引号，请改用单引号 (')。节点内部的文本绝对不能出现实体换行符 (\n)，如果文字需要换行，请使用 <br/> 标签。
+4. Mermaid 节点内绝对禁止使用 $...$、$$...$$ 和原始 LaTeX 命令，例如 \\int、\\phi、\\theta、\\frac。必须输出成纯文本或 Unicode 数学表达，例如 s(t)=sin(e(t)+φ)。
+5. mermaid 字段中绝对不要包含 \`\`\`mermaid、\`\`\` 或任何代码块标记，节点说明文字必须用简体中文。
+6. quiz 必须严格返回 3 道单选题。
+7. 每道题必须严格采用 {"question_fr":"...","question_zh":"...","question_en":"...","options_fr":["...","...","...","..."],"options_zh":["...","...","...","..."],"options_en":["...","...","...","..."],"answer":"...","answer_fr":"...","answer_zh":"...","answer_en":"..."} 结构。
+8. question_fr、question_zh、question_en 必须分别用法语、简体中文、英文表达同一道题，三者语义必须完全对应。
+9. options_fr、options_zh、options_en 必须一一对应、顺序一致，并且每题必须恰好 4 个选项。
+10. answer、answer_fr、answer_zh、answer_en 不允许填写 A/B/C/D 字母，必须填写具体内容。
+11. quiz 中凡是包含公式、数学符号、积分、表达式，都必须严格放在 $...$ 或 $$...$$ 中。
+12. 前后分隔符必须成对出现。
+13. 在输出最终 JSON 前，必须先自检是否存在裸露的 LaTeX 命令、缺少反斜杠的伪 LaTeX 命令、或者不成对的 $ / $$；如果存在，必须先修正。
+14. 题目必须围绕课件核心知识点，三语内容都要准确自然。
+15. 在输出最终 JSON 前，必须再次自检 mermaid：检查是否有双引号嵌套、内部物理换行 \\n、缺少的连线换行，以及残留的 LaTeX 命令，如果有必须修整。label 用术语本身，value 用对应的中文解释；如术语带公式，必须保留公式。
 16. 所有数学公式、变量和希腊字母在 translation_layout 中也必须遵守 LaTeX 包裹规范；绝对禁止裸输出 LaTeX 命令。
 17. 在输出最终 JSON 前，你必须自检 translation 和 translation_layout：检查是否存在裸露的 \\int、\\frac、\\sum、\\alpha、\\theta、\\mathbb，以及不成对的 $ / $$；如有必须先修正。
 18. 不要输出任何 JSON 之外的内容。`;
@@ -256,11 +261,9 @@ function getDocumentSystemPrompt() {
 9. quiz 中凡是包含公式、数学符号、希腊字母、积分、分式、上下标、函数表达式的题干、选项或答案，都必须使用 LaTeX，并严格放在 $...$ 或 $$...$$ 中，绝对禁止裸输出 \\int、\\frac、\\alpha、\\theta、\\mathbb 等命令。
 10. 如果题干、选项或答案里出现整行公式或独立公式，必须使用 $$...$$ 并保证前后分隔符成对出现；如果只是句中公式，必须使用 $...$。
 11. 在输出最终 JSON 前，必须先自检 quiz 中是否存在裸露的 LaTeX 命令、缺少反斜杠的伪 LaTeX 命令、或者不成对的 $ / $$；如果存在，必须先修正。
-12. 题目必须围绕课件核心知识点，三语内容都要准确自然。
-13. Mermaid 节点内绝对禁止使用 $...$、$$...$$ 和原始 LaTeX 命令，例如 \\int、\\phi、\\theta、\\alpha、\\frac。
-14. 如果 Mermaid 节点需要表达公式或数学关系，只能输出成 Mermaid 可读的纯文本或 Unicode 数学表达，例如 s(t)=sin(e(t)+φ)、∫h(θ)e(t-θ)dθ、(ω0²)/(p²+2mω0p+ω0²)。
-15. 在输出最终 JSON 前，必须再次自检 mermaid：节点内容中不能出现任何裸露的 $、$$ 或原始 LaTeX 命令；如有必须先转换为可读纯文本。
-16. 不要输出任何 JSON 之外的内容。`;
+16. 题目必须围绕课件核心知识点，三语内容都要准确自然。
+17. 在输出最终 JSON 前，必须再次自检 mermaid：检查是否有双引号嵌套、内部物理换行 \n、缺少的连线换行，以及残留的 LaTeX 命令，如果有必须修整。
+18. 不要输出任何 JSON 之外的内容。`;
 }
 
 function normalizeText(value: unknown) {
@@ -305,7 +308,10 @@ function sanitizeMermaidMathText(value: string) {
     .replace(/\$\$([\s\S]*?)\$\$/gu, "$1")
     .replace(/\$([^$\n]+)\$/gu, "$1");
 
-  return replaceSimpleFractions(withoutMathDelimiters)
+  const subMap: Record<string, string> = { "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉", "n": "ₙ", "i": "ᵢ" };
+  const supMap: Record<string, string> = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "n": "ⁿ", "-": "⁻" };
+
+  let text = replaceSimpleFractions(withoutMathDelimiters)
     .replace(/\\left|\\right/gu, "")
     .replace(/\\mathbb\{R\}/gu, "ℝ")
     .replace(/\\mathbb\{C\}/gu, "ℂ")
@@ -327,11 +333,32 @@ function sanitizeMermaidMathText(value: string) {
     .replace(/\\leq/gu, "≤")
     .replace(/\\geq/gu, "≥")
     .replace(/\\neq/gu, "≠")
+    .replace(/ω0|ω_0/gu, "ω₀")
+    .replace(/_([0-9in])/gu, (m, c) => subMap[c] || m)
+    .replace(/\^([0-9n])/gu, (m, c) => supMap[c] || m)
+    .replace(/_\{([0-9in]+)\}/gu, (m, c) => c.split('').map(x => subMap[x] || x).join(''))
+    .replace(/\^\{([0-9n-]+)\}/gu, (m, c) => c.split('').map(x => supMap[x] || x).join(''))
     .replace(/\\mathrm\{([^{}]+)\}/gu, "$1")
     .replace(/\\operatorname\{([^{}]+)\}/gu, "$1")
     .replace(/\\[()]/gu, "")
     .replace(/[^\S\n]+/gu, " ")
+    .replace(/\s+²|(\S)\s+²/gu, "$1²")
+    .replace(/\s+₀|(\S)\s+₀/gu, "$1₀")
     .trim();
+
+  // 终极连线格式保底修复：如果大模型死活要把多个节点定义塞在同一行，这里替它强制拆行，避免 Expecting 'NEWLINE' 报错
+  text = text.replace(/\]\s+([A-Za-z0-9_]+)\s*(-+>|-.->|==>)/g, "]\n$1 $2");
+  text = text.replace(/^(flowchart|graph)\s+(TD|LR|RL|BT)\s+(?=[A-Za-z0-9_]+)/i, "$1 $2\n");
+
+  // 终极字符串内容保底修复：清理 A["..."] 内部可能出现的物理换行符（\n）和未转义的双引号（"），避免 Lexical error
+  text = text.replace(/\["([\s\S]*?)"\]/g, (_, inner) => {
+    const safeInner = inner
+      .replace(/"/g, "'") // 禁止里面套双引号
+      .replace(/\n/g, "<br/>"); // 禁止出现真的物理换行符
+    return `["${safeInner}"]`;
+  });
+
+  return text;
 }
 
 function buildJsonErrorContext(value: string, error: unknown) {

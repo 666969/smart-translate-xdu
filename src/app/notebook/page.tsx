@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import Header from "../components/Header";
 import SpeakButton from "../components/SpeakButton";
+import MarkdownRenderer from "../components/MarkdownRenderer";
 import {
   getAllVocabs,
   getVocabsDueForReview,
@@ -114,9 +115,9 @@ function FlashcardReview({
                 {current.term_zh}
               </p>
               <div className="h-px w-20 bg-amber-200 mx-auto my-3" />
-              <p className="text-base text-gray-700 leading-relaxed">
-                {current.definition_zh}
-              </p>
+              <div className="text-base text-gray-700 leading-relaxed text-left inline-block">
+                <MarkdownRenderer content={current.definition_zh} compact className="[&_p]:m-0" />
+              </div>
             </div>
           )}
         </div>
@@ -186,9 +187,9 @@ function ReQuizModal({
         </div>
 
         <div className="p-6 space-y-4">
-          <p className="text-base font-medium text-foreground leading-relaxed">
-            {item.question_zh}
-          </p>
+          <div className="text-base font-medium text-foreground leading-relaxed">
+            <MarkdownRenderer content={item.question_zh} compact className="[&_p]:m-0" />
+          </div>
 
           <div className="space-y-2">
             {item.options_zh.map((option, idx) => (
@@ -208,10 +209,14 @@ function ReQuizModal({
                       : "border-gray-200 hover:border-primary/30 hover:bg-gray-50"
                 }`}
               >
-                <span className="font-medium mr-2">
-                  {String.fromCharCode(65 + idx)}.
-                </span>
-                {option}
+                <div className="flex items-start gap-2">
+                  <span className="font-medium pt-0.5">
+                    {String.fromCharCode(65 + idx)}.
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <MarkdownRenderer content={option} compact className="[&_p]:m-0 [&_p]:leading-normal text-left" />
+                  </div>
+                </div>
               </button>
             ))}
           </div>
@@ -423,14 +428,14 @@ export default function NotebookPage() {
                           </p>
                         </div>
                       ) : (
-                        <div className="text-center animate-fade-in">
+                        <div className="text-center animate-fade-in w-full">
                           <p className="text-base font-semibold text-amber-700 mb-1">
                             {vocab.term_zh}
                           </p>
                           <div className="h-px w-12 bg-amber-200 mx-auto my-2" />
-                          <p className="text-sm text-gray-600 leading-relaxed">
-                            {vocab.definition_zh}
-                          </p>
+                          <div className="text-sm text-gray-600 leading-relaxed text-left inline-block">
+                            <MarkdownRenderer content={vocab.definition_zh} compact className="[&_p]:m-0" />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -487,16 +492,18 @@ export default function NotebookPage() {
                           key={item.id}
                           className="bg-white rounded-2xl border border-rose-100 shadow-sm p-5 hover:shadow-md transition-all"
                         >
-                          <p className="text-base font-medium text-foreground mb-3">
-                            {item.question_zh}
-                          </p>
-                          <div className="flex items-center gap-2 text-sm mb-3">
-                            <span className="text-red-500 bg-red-50 px-2 py-0.5 rounded-md text-xs">
-                              你的答案: {item.wrongOption}
-                            </span>
-                            <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded-md text-xs">
-                              正确答案: {item.answer_zh}
-                            </span>
+                          <div className="text-base font-medium text-foreground mb-3">
+                            <MarkdownRenderer content={item.question_zh} compact className="[&_p]:m-0" />
+                          </div>
+                          <div className="flex flex-col gap-2 text-sm mb-3">
+                            <div className="text-red-500 bg-red-50 p-2.5 rounded-lg border border-red-100/50">
+                              <span className="text-xs font-semibold block mb-1 opacity-80">你的答案:</span>
+                              <MarkdownRenderer content={item.wrongOption} compact className="[&_p]:m-0 [&_p]:text-sm" />
+                            </div>
+                            <div className="text-green-600 bg-green-50 p-2.5 rounded-lg border border-green-100/50">
+                              <span className="text-xs font-semibold block mb-1 opacity-80">正确答案:</span>
+                              <MarkdownRenderer content={item.answer_zh} compact className="[&_p]:m-0 [&_p]:text-sm" />
+                            </div>
                           </div>
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] text-text-light">
@@ -542,9 +549,9 @@ export default function NotebookPage() {
                           key={item.id}
                           className="bg-gray-50 rounded-xl border border-gray-100 p-4 flex items-center justify-between opacity-70"
                         >
-                          <p className="text-sm text-gray-500 line-through truncate flex-1 mr-4">
-                            {item.question_zh}
-                          </p>
+                          <div className="text-sm text-gray-500 line-through flex-1 mr-4 min-w-0">
+                            <MarkdownRenderer content={item.question_zh} compact className="[&_p]:truncate [&_p]:m-0" />
+                          </div>
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] text-green-500 bg-green-50 px-2 py-0.5 rounded">
                               ✅ 已解决
