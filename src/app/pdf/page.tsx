@@ -563,8 +563,8 @@ export default function PdfPage() {
                       AI 正在生成摘要...
                     </div>
                   ) : (
-                    <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
-                      {summary}
+                    <div className="text-xs text-gray-700 leading-relaxed">
+                      <MarkdownRenderer content={summary || ""} compact={false} />
                     </div>
                   )}
                 </div>

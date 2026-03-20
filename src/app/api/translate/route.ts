@@ -330,8 +330,7 @@ function sanitizeMermaidMathText(value: string) {
     .replace(/\\mathrm\{([^{}]+)\}/gu, "$1")
     .replace(/\\operatorname\{([^{}]+)\}/gu, "$1")
     .replace(/\\[()]/gu, "")
-    .replace(/\\([A-Za-z]+)/gu, "$1")
-    .replace(/\s+/gu, " ")
+    .replace(/[^\S\n]+/gu, " ")
     .trim();
 }
 
