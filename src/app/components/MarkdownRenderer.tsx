@@ -161,6 +161,88 @@ function normalizeLabelPrefixedFormulaLine(line: string) {
   return line;
 }
 
+function looksLikeFormulaContinuationLine(line: string) {
+  const trimmed = line.trim().replace(/^[$\s]+|[$\s]+$/g, "");
+
+  if (!trimmed) {
+    return false;
+  }
+
+  if (/^(#{1,6}|\*|-|\d+\.)\s/u.test(trimmed)) {
+    return false;
+  }
+
+  if (/^[\u4e00-\u9fff].*[：:]/u.test(trimmed)) {
+    return false;
+  }
+
+  return (
+    looksLikeInlineFormulaCandidate(trimmed) ||
+    /^(?:\\[A-Za-z]+|[A-Za-z]\w*\([^)\n]+\)|[=^_{}|()[\]/+\-])/u.test(trimmed)
+  );
+}
+
+function normalizeLabelPrefixedFormulaLines(lines: string[]) {
+  const normalizedLines: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+
+    if (!line.trim()) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    const normalizedSingleLine = normalizeLabelPrefixedFormulaLine(line);
+    if (normalizedSingleLine !== line) {
+      normalizedLines.push(normalizedSingleLine);
+      continue;
+    }
+
+    const startMatch = line.match(/^(\s*.*[：:])\s*\$\$?\s*([^$\n]*)$/u);
+    if (!startMatch) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    const [, prefix, firstChunk] = startMatch;
+    const chunks = [firstChunk.trim()];
+    let cursor = index + 1;
+
+    while (cursor < lines.length) {
+      const nextLine = lines[cursor];
+
+      if (!nextLine.trim()) {
+        break;
+      }
+
+      if (!looksLikeFormulaContinuationLine(nextLine)) {
+        break;
+      }
+
+      chunks.push(nextLine.trim());
+
+      if (/\$\$?\s*$/.test(nextLine.trim())) {
+        cursor += 1;
+        break;
+      }
+
+      cursor += 1;
+    }
+
+    const candidate = chunks.join(" ").replace(/^[$\s]+|[$\s]+$/g, "");
+    if (!candidate || !looksLikeInlineFormulaCandidate(candidate)) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    normalizedLines.push(`${prefix} $${repairFormulaBody(candidate)}$`);
+    index = cursor - 1;
+  }
+
+  return normalizedLines;
+}
+
 function normalizeLatexContent(content: string) {
   const normalizeFormulaCandidate = (candidate: string) =>
     candidate
@@ -204,19 +286,16 @@ function normalizeLatexContent(content: string) {
       (_, candidate: string) => `$${normalizeFormulaCandidate(candidate)}$`
     );
 
-  return normalized
-    .split(/\r?\n/)
+  return normalizeLabelPrefixedFormulaLines(normalized.split(/\r?\n/))
     .map((line) => {
       if (!line.trim()) {
         return line;
       }
 
-      const normalizedLabelLine = normalizeLabelPrefixedFormulaLine(line);
-
       // 修复大模型常见错误：行尾有孤立的 $$ 但行首没有对应的 $$
       // 例如："s(t) =\int_{-\infty}^{\infty} h(\theta) d\theta$$"
       // 先剥除行尾多余的 $$，再让 looksLikeStandaloneFormulaLine 正常识别
-      const lineWithoutTrailingDollar = normalizedLabelLine
+      const lineWithoutTrailingDollar = line
         .replace(/\$\$\s*$/, "")
         .replace(/\$\s*$/, "")
         .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")

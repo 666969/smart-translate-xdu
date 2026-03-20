@@ -149,6 +149,88 @@ function normalizePdfLabelPrefixedFormulaLine(line: string) {
   return line;
 }
 
+function looksLikePdfFormulaContinuationLine(line: string) {
+  const trimmed = line.trim().replace(/^[$\s]+|[$\s]+$/g, "");
+
+  if (!trimmed) {
+    return false;
+  }
+
+  if (/^(#{1,6}|\*|-|\d+\.)\s/u.test(trimmed)) {
+    return false;
+  }
+
+  if (/^[\u4e00-\u9fff].*[：:]/u.test(trimmed)) {
+    return false;
+  }
+
+  return (
+    looksLikePdfInlineFormula(trimmed) ||
+    /^(?:\\[A-Za-z]+|[A-Za-z]\w*\([^)\n]+\)|[=^_{}|()[\]/+\-])/u.test(trimmed)
+  );
+}
+
+function normalizePdfLabelPrefixedFormulaLines(lines: string[]) {
+  const normalizedLines: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+
+    if (!line.trim()) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    const normalizedSingleLine = normalizePdfLabelPrefixedFormulaLine(line);
+    if (normalizedSingleLine !== line) {
+      normalizedLines.push(normalizedSingleLine);
+      continue;
+    }
+
+    const startMatch = line.match(/^(\s*.*[：:])\s*\$\$?\s*([^$\n]*)$/u);
+    if (!startMatch) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    const [, prefix, firstChunk] = startMatch;
+    const chunks = [firstChunk.trim()];
+    let cursor = index + 1;
+
+    while (cursor < lines.length) {
+      const nextLine = lines[cursor];
+
+      if (!nextLine.trim()) {
+        break;
+      }
+
+      if (!looksLikePdfFormulaContinuationLine(nextLine)) {
+        break;
+      }
+
+      chunks.push(nextLine.trim());
+
+      if (/\$\$?\s*$/.test(nextLine.trim())) {
+        cursor += 1;
+        break;
+      }
+
+      cursor += 1;
+    }
+
+    const candidate = chunks.join(" ").replace(/^[$\s]+|[$\s]+$/g, "");
+    if (!candidate || !looksLikePdfInlineFormula(candidate)) {
+      normalizedLines.push(line);
+      continue;
+    }
+
+    normalizedLines.push(`${prefix} $${repairPdfFormulaBody(candidate)}$`);
+    index = cursor - 1;
+  }
+
+  return normalizedLines;
+}
+
 function sanitizePdfReplyMath(text: string) {
   const normalized = text
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
@@ -183,16 +265,13 @@ function sanitizePdfReplyMath(text: string) {
       }
     );
 
-  return normalized
-    .split(/\r?\n/)
+  return normalizePdfLabelPrefixedFormulaLines(normalized.split(/\r?\n/))
     .map((line) => {
       if (!line.trim()) {
         return line;
       }
 
-      const normalizedLabelLine = normalizePdfLabelPrefixedFormulaLine(line);
-
-      const lineWithoutTrailingDollar = normalizedLabelLine
+      const lineWithoutTrailingDollar = line
         .replace(/\$\$\s*$/, "")
         .replace(/\$\s*$/, "")
         .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
