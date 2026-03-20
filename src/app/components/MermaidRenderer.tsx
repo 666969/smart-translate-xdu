@@ -21,6 +21,8 @@ export default function MermaidRenderer({ code }: MermaidRendererProps) {
     let cancelled = false;
 
     async function renderMermaid() {
+      // 生成唯一 ID
+      const id = `mermaid-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       try {
         // 动态导入 mermaid（仅客户端）
         const mermaid = (await import("mermaid")).default;
@@ -43,10 +45,8 @@ export default function MermaidRenderer({ code }: MermaidRendererProps) {
             padding: 12,
           },
           securityLevel: "loose",
+          suppressErrorRendering: true,
         });
-
-        // 生成唯一 ID
-        const id = `mermaid-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
         const { svg: renderedSvg } = await mermaid.render(id, code);
 
@@ -59,6 +59,16 @@ export default function MermaidRenderer({ code }: MermaidRendererProps) {
           console.error("[Mermaid] 渲染失败:", err);
           setError(err instanceof Error ? err.message : "图表渲染失败");
           setSvg("");
+        }
+
+        // 清除 Mermaid 崩溃后强行往 body 塞进来的原生报错 SVG 容器
+        try {
+          const orphan1 = document.getElementById(id);
+          if (orphan1 && orphan1.parentElement === document.body) orphan1.remove();
+          const orphan2 = document.getElementById(`d${id}`);
+          if (orphan2 && orphan2.parentElement === document.body) orphan2.remove();
+        } catch (e) {
+          // 忽略清理报错
         }
       }
     }
