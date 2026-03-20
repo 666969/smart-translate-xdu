@@ -11,29 +11,6 @@ interface AuthModalProps {
 
 type AuthMode = "signIn" | "signUp";
 
-function GoogleMark() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-      <path
-        d="M21.8 12.23c0-.72-.06-1.24-.19-1.79H12v3.54h5.64c-.11.88-.72 2.2-2.08 3.1l-.02.12 3.02 2.34.21.02c1.93-1.78 3.03-4.39 3.03-7.33Z"
-        fill="#4285F4"
-      />
-      <path
-        d="M12 22c2.76 0 5.08-.9 6.77-2.44l-3.22-2.49c-.86.6-2.01 1.03-3.55 1.03-2.71 0-5.01-1.78-5.83-4.24l-.12.01-3.14 2.43-.04.11A10.24 10.24 0 0 0 12 22Z"
-        fill="#34A853"
-      />
-      <path
-        d="M6.17 13.86A6.18 6.18 0 0 1 5.85 12c0-.65.11-1.28.3-1.86l-.01-.12-3.18-2.47-.1.05A10.27 10.27 0 0 0 1.8 12c0 1.64.39 3.19 1.06 4.4l3.31-2.54Z"
-        fill="#FBBC05"
-      />
-      <path
-        d="M12 5.9c1.94 0 3.24.84 3.98 1.54l2.9-2.82C17.07 2.98 14.76 2 12 2a10.24 10.24 0 0 0-9.14 5.6l3.3 2.54C6.99 7.68 9.29 5.9 12 5.9Z"
-        fill="#EA4335"
-      />
-    </svg>
-  );
-}
-
 function getAuthErrorMessage(error: unknown) {
   if (!(error instanceof Error)) {
     return "登录失败，请稍后重试。";
@@ -64,7 +41,7 @@ function getAuthErrorMessage(error: unknown) {
 }
 
 export default function AuthModal({ open, onClose }: AuthModalProps) {
-  const { signIn, signInWithGoogle, signUp, isConfigured } = useAuth();
+  const { signIn, signUp, isConfigured } = useAuth();
   const [mode, setMode] = useState<AuthMode>("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -125,20 +102,6 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       } else {
         await signUp(email.trim(), password);
       }
-      onClose();
-    } catch (error) {
-      setErrorMessage(getAuthErrorMessage(error));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    setSubmitting(true);
-    setErrorMessage(null);
-
-    try {
-      await signInWithGoogle();
       onClose();
     } catch (error) {
       setErrorMessage(getAuthErrorMessage(error));
@@ -258,22 +221,6 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
               {modeLabel.action}
             </button>
           </form>
-
-          <div className="flex items-center gap-3 text-xs uppercase tracking-[0.28em] text-slate-400">
-            <span className="h-px flex-1 bg-slate-200" />
-            或者
-            <span className="h-px flex-1 bg-slate-200" />
-          </div>
-
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={submitting || !isConfigured}
-            className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-          >
-            {submitting ? <Loader2 size={16} className="animate-spin" /> : <GoogleMark />}
-            Google 一键登录
-          </button>
 
           <button
             type="button"
