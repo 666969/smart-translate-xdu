@@ -13,7 +13,7 @@ interface MarkdownRendererProps {
 }
 
 const LATEX_COMMAND_PATTERN =
-  /\\(?:frac|int|sum|sqrt|sin|cos|tan|ln|log|forall|exists|infty|alpha|beta|gamma|theta|phi|omega|mathbb|mathrm|mathcal|operatorname|cdot|times|leq|geq|neq|to|rightarrow|left|right)\b/u;
+  /\\(?:frac|int|lim|sum|sqrt|sin|cos|tan|ln|log|pi|nu|forall|exists|infty|alpha|beta|gamma|theta|phi|omega|mathbb|mathrm|mathcal|operatorname|cdot|times|leq|geq|neq|to|rightarrow|left|right)\b/u;
 
 function countUnescapedDollarSigns(text: string) {
   let count = 0;
@@ -141,6 +141,26 @@ function closeDanglingInlineFormula(line: string) {
   });
 }
 
+function normalizeLabelPrefixedFormulaLine(line: string) {
+  const formulaWithDelimiters = line.match(/^(\s*.*[：:])\s*\$\$?([^$\n]+?)\$\$?\s*$/u);
+  if (formulaWithDelimiters) {
+    const [, prefix, candidate] = formulaWithDelimiters;
+    if (looksLikeInlineFormulaCandidate(candidate)) {
+      return `${prefix} $${repairFormulaBody(candidate)}$`;
+    }
+  }
+
+  const bareFormulaAfterLabel = line.match(/^(\s*.*[：:])\s*((?:\\[A-Za-z]+|[A-Za-z]\w*\([^)\n]+\)|[∀∃∈ℝα-ωΑ-Ω∫∑∞≈≠≤≥±]).*)$/u);
+  if (bareFormulaAfterLabel) {
+    const [, prefix, candidate] = bareFormulaAfterLabel;
+    if (looksLikeInlineFormulaCandidate(candidate)) {
+      return `${prefix} $${repairFormulaBody(candidate)}$`;
+    }
+  }
+
+  return line;
+}
+
 function normalizeLatexContent(content: string) {
   const normalizeFormulaCandidate = (candidate: string) =>
     candidate
@@ -191,10 +211,12 @@ function normalizeLatexContent(content: string) {
         return line;
       }
 
+      const normalizedLabelLine = normalizeLabelPrefixedFormulaLine(line);
+
       // 修复大模型常见错误：行尾有孤立的 $$ 但行首没有对应的 $$
       // 例如："s(t) =\int_{-\infty}^{\infty} h(\theta) d\theta$$"
       // 先剥除行尾多余的 $$，再让 looksLikeStandaloneFormulaLine 正常识别
-      const lineWithoutTrailingDollar = line
+      const lineWithoutTrailingDollar = normalizedLabelLine
         .replace(/\$\$\s*$/, "")
         .replace(/\$\s*$/, "")
         .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")

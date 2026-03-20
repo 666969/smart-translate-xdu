@@ -58,7 +58,7 @@ interface ChatMessage {
 }
 
 const PDF_LATEX_COMMAND_PATTERN =
-  /\\(?:frac|int|sum|sqrt|sin|cos|tan|ln|log|forall|exists|infty|alpha|beta|gamma|theta|phi|omega|mathbb|mathrm|mathcal|operatorname|cdot|times|leq|geq|neq|to|rightarrow|left|right)\b/u;
+  /\\(?:frac|int|lim|sum|sqrt|sin|cos|tan|ln|log|pi|nu|forall|exists|infty|alpha|beta|gamma|theta|phi|omega|mathbb|mathrm|mathcal|operatorname|cdot|times|leq|geq|neq|to|rightarrow|left|right)\b/u;
 
 function usesZhipuCompatibility() {
   return (process.env.OPENAI_BASE_URL || "").includes("open.bigmodel.cn");
@@ -129,6 +129,26 @@ function looksLikePdfInlineFormula(candidate: string) {
   );
 }
 
+function normalizePdfLabelPrefixedFormulaLine(line: string) {
+  const formulaWithDelimiters = line.match(/^(\s*.*[：:])\s*\$\$?([^$\n]+?)\$\$?\s*$/u);
+  if (formulaWithDelimiters) {
+    const [, prefix, candidate] = formulaWithDelimiters;
+    if (looksLikePdfInlineFormula(candidate)) {
+      return `${prefix} $${repairPdfFormulaBody(candidate)}$`;
+    }
+  }
+
+  const bareFormulaAfterLabel = line.match(/^(\s*.*[：:])\s*((?:\\[A-Za-z]+|[A-Za-z]\w*\([^)\n]+\)|[∀∃∈ℝα-ωΑ-Ω∫∑∞≈≠≤≥±]).*)$/u);
+  if (bareFormulaAfterLabel) {
+    const [, prefix, candidate] = bareFormulaAfterLabel;
+    if (looksLikePdfInlineFormula(candidate)) {
+      return `${prefix} $${repairPdfFormulaBody(candidate)}$`;
+    }
+  }
+
+  return line;
+}
+
 function sanitizePdfReplyMath(text: string) {
   const normalized = text
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
@@ -170,7 +190,9 @@ function sanitizePdfReplyMath(text: string) {
         return line;
       }
 
-      const lineWithoutTrailingDollar = line
+      const normalizedLabelLine = normalizePdfLabelPrefixedFormulaLine(line);
+
+      const lineWithoutTrailingDollar = normalizedLabelLine
         .replace(/\$\$\s*$/, "")
         .replace(/\$\s*$/, "")
         .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
