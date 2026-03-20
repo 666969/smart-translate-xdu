@@ -7,6 +7,7 @@ import {
   normalizeTranslationLayout,
   type TranslationLayoutBlock,
 } from "@/lib/translationLayout";
+import { useAppSession } from "./components/AppSessionProvider";
 
 const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
 const KeywordGlossary = lazy(() => import("./components/KeywordGlossary"));
@@ -218,36 +219,52 @@ function CloseIcon() {
 /* ========== Main Page Component ========== */
 
 export default function Home() {
-  const [mode, setMode] = useState<"snippet" | "document">("snippet");
-  const [deepMode, setDeepMode] = useState(false);
-  const [snippetText, setSnippetText] = useState("");
-  const [snippetFile, setSnippetFile] = useState<File | null>(null);
-  const [snippetPreviewUrl, setSnippetPreviewUrl] = useState<string | null>(null);
-
-  const [documentFiles, setDocumentFiles] = useState<File[]>([]);
-  const [documentPreviewUrls, setDocumentPreviewUrls] = useState<string[]>([]);
-
-  const [quizLang, setQuizLang] = useState<QuizLang>("zh");
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessage, setChatMessage] = useState("");
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const { home } = useAppSession();
+  const {
+    mode,
+    setMode,
+    deepMode,
+    setDeepMode,
+    snippetText,
+    setSnippetText,
+    snippetFile,
+    setSnippetFile,
+    snippetPreviewUrl,
+    setSnippetPreviewUrl,
+    documentFiles,
+    setDocumentFiles,
+    documentPreviewUrls,
+    setDocumentPreviewUrls,
+    quizLang,
+    setQuizLang,
+    chatOpen,
+    setChatOpen,
+    chatMessage,
+    setChatMessage,
+    chatMessages,
+    setChatMessages,
+    translationResult,
+    setTranslationResult,
+    translationLayoutResult,
+    setTranslationLayoutResult,
+    analysisResult,
+    setAnalysisResult,
+    keywordsResult,
+    setKeywordsResult,
+    keywordItemsResult,
+    setKeywordItemsResult,
+    mermaidData,
+    setMermaidData,
+    quizData,
+    setQuizData,
+    errorMessage,
+    setErrorMessage,
+  } = home;
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [translationResult, setTranslationResult] = useState<string | null>(null);
-  const [translationLayoutResult, setTranslationLayoutResult] = useState<TranslationLayoutBlock[]>([]);
-  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
-  const [keywordsResult, setKeywordsResult] = useState<string | null>(null);
-  const [keywordItemsResult, setKeywordItemsResult] = useState<KeywordItem[]>([]);
-  const [mermaidData, setMermaidData] = useState<string | null>(null);
-  const [quizData, setQuizData] = useState<QuizItem[] | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const snippetFileInputRef = useRef<HTMLInputElement>(null);
   const documentFileInputRef = useRef<HTMLInputElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
-  const previewUrlsRef = useRef<{ snippet: string | null; document: string[] }>({
-    snippet: null,
-    document: [],
-  });
 
   // 聊天窗自动滚动到底部
   useEffect(() => {
@@ -255,23 +272,6 @@ export default function Home() {
       chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
     }
   }, [chatMessages, isChatLoading]);
-
-  useEffect(() => {
-    previewUrlsRef.current = {
-      snippet: snippetPreviewUrl,
-      document: documentPreviewUrls,
-    };
-  }, [snippetPreviewUrl, documentPreviewUrls]);
-
-  useEffect(() => {
-    return () => {
-      const { snippet, document } = previewUrlsRef.current;
-      if (snippet) {
-        URL.revokeObjectURL(snippet);
-      }
-      document.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, []);
 
   const handleModeChange = (nextMode: "snippet" | "document") => {
     setMode(nextMode);

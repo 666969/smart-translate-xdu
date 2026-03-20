@@ -98,7 +98,7 @@ export default function Header() {
                   pathname === "/notebook" ? "text-primary font-semibold" : "text-text-muted hover:text-primary"
                 }`}
               >
-                生词本
+                笔记本
               </Link>
               <Link
                 href="/pdf"
@@ -158,11 +158,11 @@ export default function Header() {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-primary mt-0.5">🔹</span> 
-                  <span><strong>生词本 & 错题集：</strong>关键词旁点 ⭐ 收藏到生词本，测验答错自动收录错题本，支持艾宾浩斯闪卡复习。</span>
+                  <span><strong>笔记本：</strong>包含生词本与错题本。关键词旁点 ⭐ 收藏到生词本，测验答错自动收录错题本，支持艾宾浩斯闪卡复习。</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-primary mt-0.5">🔹</span> 
-                  <span><strong>文献精读：</strong>上传完整 PDF 课件，AI 自动生成章节摘要，支持对文献内容任意追问。</span>
+                  <span><strong>文献精读：</strong>上传完整 PDF 课件，AI 自动生成全文摘要，支持对文献内容任意追问。</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-primary mt-0.5">🔹</span> 

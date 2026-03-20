@@ -49,9 +49,9 @@ export default function GlossaryDashboard() {
   return (
     <div className="flex flex-col h-screen w-full bg-slate-50 text-slate-800 font-sans overflow-hidden">
       <Header />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden animate-fade-in-up">
       {/* Sidebar */}
-      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 shadow-sm z-10">
+      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 shadow-sm z-10 animate-fade-in-up-delay-1">
         <div className="h-16 flex items-center px-6 border-b border-slate-100">
           <Languages className="w-6 h-6 text-blue-600 mr-3" />
           <h1 className="text-xl font-bold text-slate-800 tracking-tight">智译西电 | 词汇库</h1>
@@ -92,7 +92,7 @@ export default function GlossaryDashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50">
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50 animate-fade-in-up-delay-2">
         {/* Header: Search & Mode Switcher */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 flex-shrink-0">
           <div className="flex items-center gap-6 w-full max-w-3xl">

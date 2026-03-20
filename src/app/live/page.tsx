@@ -226,10 +226,10 @@ export default function LiveTranslationPage() {
 
       <Header />
 
-      <main className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 md:p-8 h-[calc(100vh-80px)]">
+      <main className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 md:p-8 h-[calc(100vh-80px)] animate-fade-in-up">
         
         {/* Top Controls Area */}
-        <div className="bg-card-bg/80 backdrop-blur-xl border border-card-border shadow-md rounded-3xl p-6 mb-6 flex flex-col md:flex-row items-center justify-between gap-6 z-10 transition-all">
+        <div className="bg-card-bg/80 backdrop-blur-xl border border-card-border shadow-md rounded-3xl p-6 mb-6 flex flex-col md:flex-row items-center justify-between gap-6 z-10 transition-all animate-fade-in-up-delay-1">
           
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-primary flex items-center justify-center text-white shadow-lg shadow-primary/20">
@@ -289,7 +289,7 @@ export default function LiveTranslationPage() {
         )}
 
         {/* Subtitle Scrolling Area */}
-        <div className="flex-1 bg-card-bg/60 backdrop-blur-md border border-card-border rounded-3xl p-6 md:p-8 overflow-y-auto flex flex-col gap-6 shadow-inner relative">
+        <div className="flex-1 bg-card-bg/60 backdrop-blur-md border border-card-border rounded-3xl p-6 md:p-8 overflow-y-auto flex flex-col gap-6 shadow-inner relative animate-fade-in-up-delay-2">
           
           {transcripts.length === 0 && !interimText && !isRecording && (
             <div className="flex-1 flex flex-col items-center justify-center text-text-muted/60 absolute inset-0">

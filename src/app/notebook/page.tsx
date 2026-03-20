@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   BookOpen,
   Star,
@@ -24,6 +24,7 @@ import {
   removeWrongAnswer,
 } from "@/lib/db";
 import type { VocabItem, WrongAnswerItem } from "@/lib/db";
+import { useAppSession } from "../components/AppSessionProvider";
 
 type TabMode = "vocab" | "wrong";
 
@@ -248,13 +249,20 @@ function ReQuizModal({
 /* ========== Main Page ========== */
 
 export default function NotebookPage() {
-  const [tab, setTab] = useState<TabMode>("vocab");
+  const { notebook } = useAppSession();
+  const {
+    tab,
+    setTab,
+    isReviewing,
+    setIsReviewing,
+    requizItemId,
+    setRequizItemId,
+    flippedCardIds,
+    setFlippedCardIds,
+  } = notebook;
   const [vocabs, setVocabs] = useState<VocabItem[]>([]);
   const [dueVocabs, setDueVocabs] = useState<VocabItem[]>([]);
   const [wrongAnswers, setWrongAnswers] = useState<WrongAnswerItem[]>([]);
-  const [isReviewing, setIsReviewing] = useState(false);
-  const [requizItem, setRequizItem] = useState<WrongAnswerItem | null>(null);
-  const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
 
   const loadData = useCallback(async () => {
     try {
@@ -286,19 +294,22 @@ export default function NotebookPage() {
   };
 
   const toggleFlip = (id: number) => {
-    setFlippedCards((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
+    setFlippedCardIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((itemId) => itemId !== id);
       }
-      return next;
+
+      return [...prev, id];
     });
   };
 
   const unresolvedWrong = wrongAnswers.filter((w) => !w.resolved);
   const resolvedWrong = wrongAnswers.filter((w) => w.resolved);
+  const flippedCards = useMemo(() => new Set(flippedCardIds), [flippedCardIds]);
+  const requizItem = useMemo(
+    () => wrongAnswers.find((item) => item.id === requizItemId) ?? null,
+    [wrongAnswers, requizItemId]
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -495,7 +506,7 @@ export default function NotebookPage() {
                             </span>
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => setRequizItem(item)}
+                                onClick={() => setRequizItemId(item.id ?? null)}
                                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
                               >
                                 <RotateCcw size={12} />
@@ -571,7 +582,7 @@ export default function NotebookPage() {
       {requizItem && (
         <ReQuizModal
           item={requizItem}
-          onClose={() => setRequizItem(null)}
+          onClose={() => setRequizItemId(null)}
           onResolved={loadData}
         />
       )}

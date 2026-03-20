@@ -257,7 +257,10 @@ function getDocumentSystemPrompt() {
 10. 如果题干、选项或答案里出现整行公式或独立公式，必须使用 $$...$$ 并保证前后分隔符成对出现；如果只是句中公式，必须使用 $...$。
 11. 在输出最终 JSON 前，必须先自检 quiz 中是否存在裸露的 LaTeX 命令、缺少反斜杠的伪 LaTeX 命令、或者不成对的 $ / $$；如果存在，必须先修正。
 12. 题目必须围绕课件核心知识点，三语内容都要准确自然。
-13. 不要输出任何 JSON 之外的内容。`;
+13. Mermaid 节点内绝对禁止使用 $...$、$$...$$ 和原始 LaTeX 命令，例如 \\int、\\phi、\\theta、\\alpha、\\frac。
+14. 如果 Mermaid 节点需要表达公式或数学关系，只能输出成 Mermaid 可读的纯文本或 Unicode 数学表达，例如 s(t)=sin(e(t)+φ)、∫h(θ)e(t-θ)dθ、(ω0²)/(p²+2mω0p+ω0²)。
+15. 在输出最终 JSON 前，必须再次自检 mermaid：节点内容中不能出现任何裸露的 $、$$ 或原始 LaTeX 命令；如有必须先转换为可读纯文本。
+16. 不要输出任何 JSON 之外的内容。`;
 }
 
 function normalizeText(value: unknown) {
@@ -279,6 +282,56 @@ function stripCodeFence(value: string) {
     .trim()
     .replace(/^```(?:json|mermaid)?\s*/i, "")
     .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function replaceSimpleFractions(value: string) {
+  let next = value;
+  let previous = "";
+
+  while (next !== previous) {
+    previous = next;
+    next = next.replace(
+      /\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/gu,
+      (_, numerator: string, denominator: string) => `(${numerator})/(${denominator})`
+    );
+  }
+
+  return next;
+}
+
+function sanitizeMermaidMathText(value: string) {
+  const withoutMathDelimiters = stripCodeFence(value)
+    .replace(/\$\$([\s\S]*?)\$\$/gu, "$1")
+    .replace(/\$([^$\n]+)\$/gu, "$1");
+
+  return replaceSimpleFractions(withoutMathDelimiters)
+    .replace(/\\left|\\right/gu, "")
+    .replace(/\\mathbb\{R\}/gu, "ℝ")
+    .replace(/\\mathbb\{C\}/gu, "ℂ")
+    .replace(/\\mathbb\{Z\}/gu, "ℤ")
+    .replace(/\\alpha/gu, "α")
+    .replace(/\\beta/gu, "β")
+    .replace(/\\gamma/gu, "γ")
+    .replace(/\\theta/gu, "θ")
+    .replace(/\\phi/gu, "φ")
+    .replace(/\\omega/gu, "ω")
+    .replace(/\\pi/gu, "π")
+    .replace(/\\delta/gu, "δ")
+    .replace(/\\infty/gu, "∞")
+    .replace(/\\int/gu, "∫")
+    .replace(/\\sum/gu, "∑")
+    .replace(/\\cdot/gu, "·")
+    .replace(/\\times/gu, "×")
+    .replace(/\\rightarrow|\\to/gu, "→")
+    .replace(/\\leq/gu, "≤")
+    .replace(/\\geq/gu, "≥")
+    .replace(/\\neq/gu, "≠")
+    .replace(/\\mathrm\{([^{}]+)\}/gu, "$1")
+    .replace(/\\operatorname\{([^{}]+)\}/gu, "$1")
+    .replace(/\\[()]/gu, "")
+    .replace(/\\([A-Za-z]+)/gu, "$1")
+    .replace(/\s+/gu, " ")
     .trim();
 }
 
@@ -779,7 +832,7 @@ function normalizeQuizItem(raw: unknown): DocumentQuizItem | null {
 
 function normalizeDocumentResponse(raw: Record<string, unknown>): DocumentResponse {
   const response = {
-    mermaid: stripCodeFence(normalizeText(raw.mermaid)),
+    mermaid: sanitizeMermaidMathText(normalizeText(raw.mermaid)),
     quiz: parseJsonArrayLike(raw.quiz)
       .map(normalizeQuizItem)
       .filter((item): item is DocumentQuizItem => Boolean(item))

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import Header from "../components/Header";
 import type { PdfExtractStatus } from "@/lib/pdfParser";
+import { useAppSession } from "../components/AppSessionProvider";
 
 const MarkdownRenderer = lazy(
   () => import("../components/MarkdownRenderer")
@@ -194,46 +195,49 @@ function getStatusCardCopy(
 }
 
 export default function PdfPage() {
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [pdfText, setPdfText] = useState<string | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [pdfPreviewReady, setPdfPreviewReady] = useState(false);
-  const [pdfExtractStatus, setPdfExtractStatus] = useState<PdfReaderStatus>("idle");
-  const [pdfExtractReason, setPdfExtractReason] = useState<string | null>(null);
-  const [pageCount, setPageCount] = useState(0);
-  const [summary, setSummary] = useState<string | null>(null);
+  const { pdf } = useAppSession();
+  const {
+    pdfFile,
+    setPdfFile,
+    pdfText,
+    setPdfText,
+    pdfUrl,
+    setPdfUrl,
+    pdfPreviewReady,
+    setPdfPreviewReady,
+    pdfExtractStatus,
+    setPdfExtractStatus,
+    pdfExtractReason,
+    setPdfExtractReason,
+    pageCount,
+    setPageCount,
+    summary,
+    setSummary,
+    deepMode,
+    setDeepMode,
+    scanFallbackMode,
+    setScanFallbackMode,
+    scanPageSelection,
+    setScanPageSelection,
+    lastResolvedPageLabel,
+    setLastResolvedPageLabel,
+    chatMessages,
+    setChatMessages,
+    chatInput,
+    setChatInput,
+  } = pdf;
   const [isExtracting, setIsExtracting] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const [deepMode, setDeepMode] = useState(false);
-  const [scanFallbackMode, setScanFallbackMode] = useState(false);
-  const [scanPageSelection, setScanPageSelection] = useState("1");
-  const [lastResolvedPageLabel, setLastResolvedPageLabel] = useState<string | null>(
-    null
-  );
-
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
-  const pdfUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (chatBodyRef.current) {
       chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
     }
   }, [chatMessages, isChatLoading]);
-
-  useEffect(() => {
-    pdfUrlRef.current = pdfUrl;
-  }, [pdfUrl]);
-
-  useEffect(() => {
-    return () => {
-      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
-    };
-  }, []);
 
   const resetPdfState = () => {
     if (pdfUrl) {
@@ -448,7 +452,7 @@ export default function PdfPage() {
             文献精读
           </h1>
           <p className="text-sm text-text-muted mt-2 flex items-center gap-4">
-            上传完整 PDF 课件，AI 自动生成摘要并支持对文献的任意追问。
+            上传完整 PDF 课件，AI 自动生成全文摘要并支持对文献的任意追问。
             <span className="inline-flex items-center gap-1 rounded-full border border-card-border bg-background px-1 py-1 text-[11px] shadow-sm">
               <button
                 onClick={() => setDeepMode(false)}
@@ -540,7 +544,7 @@ export default function PdfPage() {
                 <div className="px-5 py-3 bg-violet-50/50">
                   <h3 className="text-xs font-semibold text-violet-600 mb-2 flex items-center gap-1.5">
                     <BookOpen size={12} />
-                    {statusCard ? "解析状态" : "章节摘要"}
+                    {statusCard ? "解析状态" : "全文摘要"}
                   </h3>
                   {statusCard ? (
                     <div

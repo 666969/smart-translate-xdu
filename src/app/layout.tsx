@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AppSessionProvider } from "./components/AppSessionProvider";
 
 export const metadata: Metadata = {
   title: "智译西电 - 中外合作教学翻译助手",
@@ -28,7 +29,7 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        {children}
+        <AppSessionProvider>{children}</AppSessionProvider>
       </body>
     </html>
   );
