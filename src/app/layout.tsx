@@ -1,7 +1,20 @@
 import type { Metadata } from "next";
+import { Inter, Noto_Sans_SC } from "next/font/google";
 import "./globals.css";
 import { AppSessionProvider } from "./components/AppSessionProvider";
 import { AuthProvider } from "./components/auth/AuthProvider";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const notoSansSc = Noto_Sans_SC({
+  subsets: ["latin"],
+  variable: "--font-noto-sans-sc",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "智译西电 - 中外合作教学翻译助手",
@@ -17,19 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body className="antialiased">
+      <body className={`${inter.variable} ${notoSansSc.variable} antialiased`}>
         <AuthProvider>
           <AppSessionProvider>{children}</AppSessionProvider>
         </AuthProvider>

@@ -48,12 +48,6 @@ function getQuizExplanation(item: QuizItem, lang: QuizLang) {
   return item.explanation_zh || item.explanation;
 }
 
-function getQuizActionLabel(lang: QuizLang) {
-  if (lang === "fr") return "Voir la reponse";
-  if (lang === "en") return "View Answer";
-  return "查看解析";
-}
-
 function getQuizAnswerLabel(lang: QuizLang) {
   if (lang === "fr") return "Bonne reponse";
   if (lang === "en") return "Correct Answer";
@@ -204,7 +198,7 @@ function QuizQuestion({
             <path d="M12 8v4" />
             <path d="M12 16h.01" />
           </svg>
-          已自动收录到错题本，可前往"笔记本"页面复习
+          已自动收录到错题本，可前往「笔记本」页面复习
         </div>
       )}
 

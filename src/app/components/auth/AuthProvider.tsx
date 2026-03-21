@@ -39,11 +39,10 @@ function getMissingConfigError() {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(auth));
 
   useEffect(() => {
     if (!auth) {
-      setLoading(false);
       return;
     }
 

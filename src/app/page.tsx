@@ -1,12 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, lazy, Suspense } from "react";
-import type { QuizItem, QuizLang } from "./components/DocumentQuizPanel";
 import type { KeywordItem } from "./components/KeywordGlossary";
-import {
-  normalizeTranslationLayout,
-  type TranslationLayoutBlock,
-} from "@/lib/translationLayout";
+import { normalizeTranslationLayout } from "@/lib/translationLayout";
 import { useAppSession } from "./components/AppSessionProvider";
 
 const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
@@ -334,7 +330,7 @@ export default function Home() {
     if (snippetFileInputRef.current) {
       snippetFileInputRef.current.value = "";
     }
-  }, [snippetPreviewUrl]);
+  }, [setSnippetFile, setSnippetPreviewUrl, snippetPreviewUrl]);
 
   const handleRemoveDocumentImage = useCallback((indexToRemove: number) => {
     const urlToRemove = documentPreviewUrls[indexToRemove];
@@ -348,7 +344,7 @@ export default function Home() {
     if (documentFileInputRef.current) {
       documentFileInputRef.current.value = "";
     }
-  }, [documentPreviewUrls]);
+  }, [documentPreviewUrls, setDocumentFiles, setDocumentPreviewUrls]);
 
   const handleTranslate = async () => {
     if (mode === "snippet" && !snippetText && !snippetFile) {

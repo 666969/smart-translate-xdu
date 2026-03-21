@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Volume2 } from "lucide-react";
 
 interface SpeakButtonProps {
@@ -17,17 +17,12 @@ export default function SpeakButton({
   className = "",
 }: SpeakButtonProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isSupported, setIsSupported] = useState(true);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.speechSynthesis) {
-      setIsSupported(false);
-    }
-  }, []);
-
   const handleSpeak = useCallback(() => {
-    if (!window.speechSynthesis) return;
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      return;
+    }
 
     // If currently speaking, stop
     if (isSpeaking) {
@@ -52,8 +47,6 @@ export default function SpeakButton({
     window.speechSynthesis.speak(utterance);
   }, [text, lang, isSpeaking]);
 
-  if (!isSupported) return null;
-
   return (
     <button
       onClick={(e) => {
@@ -66,6 +59,7 @@ export default function SpeakButton({
           : "text-text-muted hover:text-primary hover:bg-primary/5"
       } ${className}`}
       style={{ width: size + 12, height: size + 12 }}
+      disabled={typeof window !== "undefined" && !window.speechSynthesis}
       title={isSpeaking ? "停止朗读" : `朗读法语: ${text}`}
       aria-label={isSpeaking ? "停止朗读" : `朗读: ${text}`}
     >

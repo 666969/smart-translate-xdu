@@ -67,7 +67,7 @@ export default function MermaidRenderer({ code }: MermaidRendererProps) {
           if (orphan1 && orphan1.parentElement === document.body) orphan1.remove();
           const orphan2 = document.getElementById(`d${id}`);
           if (orphan2 && orphan2.parentElement === document.body) orphan2.remove();
-        } catch (e) {
+        } catch {
           // 忽略清理报错
         }
       }

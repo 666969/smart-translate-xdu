@@ -68,6 +68,8 @@ interface PdfSessionState {
   setPdfFile: Dispatch<SetStateAction<File | null>>;
   pdfText: string | null;
   setPdfText: Dispatch<SetStateAction<string | null>>;
+  pdfPages: string[];
+  setPdfPages: Dispatch<SetStateAction<string[]>>;
   pdfUrl: string | null;
   setPdfUrl: Dispatch<SetStateAction<string | null>>;
   pdfPreviewReady: boolean;
@@ -136,6 +138,7 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
 
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfText, setPdfText] = useState<string | null>(null);
+  const [pdfPages, setPdfPages] = useState<string[]>([]);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfPreviewReady, setPdfPreviewReady] = useState(false);
   const [pdfExtractStatus, setPdfExtractStatus] = useState<"idle" | PdfExtractStatus>("idle");
@@ -201,6 +204,8 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
         setPdfFile,
         pdfText,
         setPdfText,
+        pdfPages,
+        setPdfPages,
         pdfUrl,
         setPdfUrl,
         pdfPreviewReady,
@@ -262,6 +267,7 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
       pdfExtractReason,
       pdfExtractStatus,
       pdfFile,
+      pdfPages,
       pdfPreviewReady,
       pdfText,
       pdfUrl,

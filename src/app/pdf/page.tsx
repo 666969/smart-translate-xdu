@@ -27,6 +27,22 @@ type PdfReaderStatus = "idle" | PdfExtractStatus;
 
 const MAX_SCAN_PAGES = 5;
 
+function extractPageReferenceNote(content: string) {
+  const match = content.match(/(?:\n\s*){1,2}(参考页码：第 [^\n]+ 页)\s*$/u);
+
+  if (!match) {
+    return {
+      body: content,
+      reference: null as string | null,
+    };
+  }
+
+  return {
+    body: content.slice(0, match.index).trimEnd(),
+    reference: match[1].trim(),
+  };
+}
+
 function extractPageSelectionFromMessage(message: string) {
   const rangeMatch = message.match(
     /第?\s*(\d+)\s*(?:页)?\s*(?:-|~|—|–|到|至)\s*(\d+)\s*页?/u
@@ -201,6 +217,8 @@ export default function PdfPage() {
     setPdfFile,
     pdfText,
     setPdfText,
+    pdfPages,
+    setPdfPages,
     pdfUrl,
     setPdfUrl,
     pdfPreviewReady,
@@ -247,6 +265,7 @@ export default function PdfPage() {
     setPdfUrl(null);
     setPdfPreviewReady(false);
     setPdfText(null);
+    setPdfPages([]);
     setSummary(null);
     setChatMessages([]);
     setPageCount(0);
@@ -269,6 +288,7 @@ export default function PdfPage() {
     setPdfUrl(URL.createObjectURL(file));
     setPdfPreviewReady(true);
     setPdfText(null);
+    setPdfPages([]);
     setSummary(null);
     setChatMessages([]);
     setPageCount(0);
@@ -291,6 +311,7 @@ export default function PdfPage() {
 
       if (result.status === "text_ready" && result.fullText.trim()) {
         setPdfText(result.fullText);
+        setPdfPages(result.pages);
         setIsSummarizing(true);
 
         try {
@@ -314,6 +335,7 @@ export default function PdfPage() {
         }
       } else {
         setPdfText(null);
+        setPdfPages([]);
         setSummary(null);
       }
     } catch (err) {
@@ -321,6 +343,7 @@ export default function PdfPage() {
       setPdfExtractStatus("parse_error");
       setPdfExtractReason("PDF 预览正常，但文本提取流程发生了未预期异常。");
       setPdfText(null);
+      setPdfPages([]);
       setSummary(null);
       setScanFallbackMode(false);
     } finally {
@@ -382,6 +405,7 @@ export default function PdfPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             pdfText,
+            pdfPages,
             messages: newMessages,
             action: "chat",
             deepMode,
@@ -591,7 +615,10 @@ export default function PdfPage() {
               </div>
               {chatMessages.length > 0 && (
                 <button
-                  onClick={() => setChatMessages([])}
+                  onClick={() => {
+                    setChatMessages([]);
+                    setLastResolvedPageLabel(null);
+                  }}
                   className="ml-auto text-[10px] text-white/60 hover:text-white/90 transition-colors"
                 >
                   清空
@@ -640,43 +667,71 @@ export default function PdfPage() {
                           ? "PDF 预览已经加载，但当前还没有可用于全文问答的文本层。请查看上方解析状态说明。"
                           : "请先在左侧上传 PDF 文件，我会帮你提取文本并生成摘要。之后你可以就文献内容向我提问。"}
                   </p>
+                  {(pdfExtractStatus === "text_ready" || scanFallbackMode) && (
+                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-medium text-violet-700">
+                      <FileText size={12} />
+                      命中页码时自动追加参考页码尾注
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {chatMessages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : ""}`}
-                >
-                  {msg.role === "assistant" && (
-                    <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white">
-                      <Sparkles size={12} />
-                    </div>
-                  )}
+              {chatMessages.map((msg, idx) => {
+                const assistantContent =
+                  msg.role === "assistant" ? extractPageReferenceNote(msg.content) : null;
+
+                return (
                   <div
-                    className={`rounded-xl px-3.5 py-2.5 text-sm max-w-[360px] overflow-x-auto ${
-                      msg.role === "user"
-                        ? "bg-gradient-to-br from-violet-500 to-purple-600 text-white rounded-tr-sm"
-                        : "bg-card-bg text-foreground border border-card-border shadow-sm rounded-tl-sm"
-                    }`}
+                    key={idx}
+                    className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : ""}`}
                   >
-                    {msg.role === "assistant" ? (
-                      <Suspense fallback={<span className="animate-pulse">...</span>}>
-                        <MarkdownRenderer content={msg.content} compact />
-                      </Suspense>
-                    ) : (
-                      <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
-                        {msg.content}
-                      </pre>
+                    {msg.role === "assistant" && (
+                      <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white">
+                        <Sparkles size={12} />
+                      </div>
+                    )}
+                    <div
+                      className={`rounded-xl px-3.5 py-2.5 text-sm max-w-[360px] overflow-x-auto ${
+                        msg.role === "user"
+                          ? "bg-gradient-to-br from-violet-500 to-purple-600 text-white rounded-tr-sm"
+                          : "bg-card-bg text-foreground border border-card-border shadow-sm rounded-tl-sm"
+                      }`}
+                    >
+                      {msg.role === "assistant" ? (
+                        <div className="space-y-3">
+                          <Suspense fallback={<span className="animate-pulse">...</span>}>
+                            <MarkdownRenderer content={assistantContent?.body || msg.content} compact />
+                          </Suspense>
+                          {assistantContent?.reference && (
+                            <div className="rounded-xl border border-violet-100 bg-[linear-gradient(135deg,rgba(245,243,255,0.98),rgba(237,233,254,0.94))] px-3 py-2.5 text-xs text-violet-900 shadow-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-violet-500/10 text-violet-600">
+                                  <FileText size={12} />
+                                </span>
+                                <div>
+                                  <p className="font-semibold">参考页码</p>
+                                  <p className="mt-0.5 leading-relaxed text-violet-700">
+                                    {assistantContent.reference.replace(/^参考页码：/u, "")}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+                          {msg.content}
+                        </pre>
+                      )}
+                    </div>
+                    {msg.role === "user" && (
+                      <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+                        我
+                      </div>
                     )}
                   </div>
-                  {msg.role === "user" && (
-                    <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
-                      我
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
 
               {isChatLoading && (
                 <div className="flex gap-2.5">

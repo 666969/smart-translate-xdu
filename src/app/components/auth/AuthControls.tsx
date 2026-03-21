@@ -87,6 +87,7 @@ export default function AuthControls({ compact = false }: AuthControlsProps) {
           }`}
         >
           {user.photoURL ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={user.photoURL}
               alt={user.displayName || user.email || "用户头像"}
