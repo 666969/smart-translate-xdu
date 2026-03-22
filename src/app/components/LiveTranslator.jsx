@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   BrainCircuit,
@@ -436,6 +436,7 @@ export default function LiveTranslator() {
   const [isInsightLoading, setIsInsightLoading] = useState(false);
 
   const subtitleScrollRef = useRef(null);
+  const subtitleBottomRef = useRef(null);
   const insightScrollRef = useRef(null);
   const bufferRef = useRef({
     sentences: [],
@@ -443,6 +444,53 @@ export default function LiveTranslator() {
   });
   const insightTimerRef = useRef(null);
   const insightInFlightRef = useRef(false);
+  const translationQueueRef = useRef([]);
+  const translationInFlightRef = useRef(0);
+
+  const updateSubtitleTranslation = (subtitleId, payload) => {
+    startTransition(() => {
+      setSubtitles((prev) =>
+        prev.map((item) => (item.id === subtitleId ? { ...item, ...payload } : item))
+      );
+    });
+  };
+
+  const processTranslationQueue = () => {
+    if (translationInFlightRef.current >= 2 || translationQueueRef.current.length === 0) {
+      return;
+    }
+
+    while (translationInFlightRef.current < 2 && translationQueueRef.current.length > 0) {
+      const task = translationQueueRef.current.shift();
+      if (!task) {
+        continue;
+      }
+
+      translationInFlightRef.current += 1;
+
+      void fastTranslateSubtitle(task.originalText, task.language)
+        .then((translation) => {
+          updateSubtitleTranslation(task.subtitleId, {
+            translation,
+            status: "success",
+          });
+        })
+        .catch((error) => {
+          console.error("Fast translation failed:", error);
+          updateSubtitleTranslation(task.subtitleId, {
+            translation: "快速翻译暂时失败，请稍后重试。",
+            status: "error",
+          });
+        })
+        .finally(() => {
+          translationInFlightRef.current = Math.max(
+            0,
+            translationInFlightRef.current - 1
+          );
+          processTranslationQueue();
+        });
+    }
+  };
 
   const flushInsightBuffer = async () => {
     if (insightInFlightRef.current || bufferRef.current.sentences.length === 0) {
@@ -480,22 +528,26 @@ export default function LiveTranslator() {
     }, 15000);
   };
 
-  const handleFinalSentence = async (text) => {
+  const handleFinalSentence = (text) => {
     const originalText = normalizeSentence(text);
     if (!originalText) {
       return;
     }
 
     const subtitleId = createId("subtitle");
-    setSubtitles((prev) => [
-      ...prev,
-      {
-        id: subtitleId,
-        originalText,
-        translation: "",
-        status: "sending",
-      },
-    ].slice(-30));
+    startTransition(() => {
+      setSubtitles((prev) =>
+        [
+          ...prev,
+          {
+            id: subtitleId,
+            originalText,
+            translation: "",
+            status: "sending",
+          },
+        ].slice(-30)
+      );
+    });
 
     bufferRef.current.sentences.push(originalText);
     bufferRef.current.wordCount += countWords(originalText);
@@ -508,33 +560,12 @@ export default function LiveTranslator() {
       void flushInsightBuffer();
     }
 
-    try {
-      const translation = await fastTranslateSubtitle(originalText, language);
-      setSubtitles((prev) =>
-        prev.map((item) =>
-          item.id === subtitleId
-            ? {
-                ...item,
-                translation,
-                status: "success",
-              }
-            : item
-        )
-      );
-    } catch (error) {
-      console.error("Fast translation failed:", error);
-      setSubtitles((prev) =>
-        prev.map((item) =>
-          item.id === subtitleId
-            ? {
-                ...item,
-                translation: "快速翻译暂时失败，请稍后重试。",
-                status: "error",
-              }
-            : item
-        )
-      );
-    }
+    translationQueueRef.current.push({
+      subtitleId,
+      originalText,
+      language,
+    });
+    processTranslationQueue();
   };
 
   const { isSupported, isListening, interimText, errorMessage, startListening, stopListening } =
@@ -544,11 +575,24 @@ export default function LiveTranslator() {
     });
 
   useEffect(() => {
-    subtitleScrollRef.current?.scrollTo({
-      top: subtitleScrollRef.current.scrollHeight,
-      behavior: "smooth",
+    const scrollHost = subtitleScrollRef.current;
+    const bottomAnchor = subtitleBottomRef.current;
+
+    if (!scrollHost || !bottomAnchor) {
+      return;
+    }
+
+    const animationId = window.requestAnimationFrame(() => {
+      bottomAnchor.scrollIntoView({
+        block: "end",
+        behavior: subtitles.length > 1 ? "smooth" : "auto",
+      });
     });
-  }, [interimText, subtitles]);
+
+    return () => {
+      window.cancelAnimationFrame(animationId);
+    };
+  }, [subtitles]);
 
   useEffect(() => {
     if (insights.length > 0) {
@@ -579,6 +623,8 @@ export default function LiveTranslator() {
     setSubtitles([]);
     setInsights([]);
     bufferRef.current = { sentences: [], wordCount: 0 };
+    translationQueueRef.current = [];
+    translationInFlightRef.current = 0;
     if (insightTimerRef.current) {
       clearTimeout(insightTimerRef.current);
       insightTimerRef.current = null;
@@ -702,77 +748,80 @@ export default function LiveTranslator() {
             </div>
 
             <div className="mt-5 rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,0.92),rgba(255,255,255,0.98))] p-4 shadow-inner">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/95 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  Live Buffer
-                </p>
-                <div className="mt-2 min-h-[56px] text-base leading-7 text-slate-500">
-                  {interimText ? (
-                    <div className="flex items-start gap-3">
-                      <span className="mt-1 inline-flex h-3 w-3 rounded-full bg-primary animate-pulse" />
-                      <span>{interimText}</span>
+              <div className="flex min-h-[560px] flex-col">
+                <div className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/95 px-4 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    Live Buffer
+                  </p>
+                  <div className="mt-2 min-h-[56px] text-base leading-7 text-slate-500">
+                    {interimText ? (
+                      <div className="flex items-start gap-3">
+                        <span className="mt-1 inline-flex h-3 w-3 rounded-full bg-primary animate-pulse" />
+                        <span>{interimText}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-3 text-slate-300">
+                        <span className="mt-1 inline-flex h-3 w-3 rounded-full bg-slate-200" />
+                        <span>{isListening ? "正在等待新的句子结束..." : "点击上方按钮后开始接收课堂语音"}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  ref={subtitleScrollRef}
+                  className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1 scroll-smooth"
+                >
+                  {subtitles.length === 0 ? (
+                    <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-[28px] border border-dashed border-card-border bg-white/70 text-center text-text-muted">
+                      <Languages size={38} className="mb-4 text-slate-300" />
+                      <p className="text-base font-medium text-foreground">
+                        字幕流准备就绪
+                      </p>
+                      <p className="mt-2 text-sm leading-7 text-text-muted">
+                        一句话说完后，会先落原文，再在下方补出极速中文翻译。
+                      </p>
                     </div>
                   ) : (
-                    <div className="flex items-start gap-3 text-slate-300">
-                      <span className="mt-1 inline-flex h-3 w-3 rounded-full bg-slate-200" />
-                      <span>{isListening ? "正在等待新的句子结束..." : "点击上方按钮后开始接收课堂语音"}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div
-                ref={subtitleScrollRef}
-                className="mt-4 flex max-h-[58vh] min-h-[420px] flex-col gap-4 overflow-y-auto pr-1 scroll-smooth"
-              >
-                {subtitles.length === 0 ? (
-                  <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-[28px] border border-dashed border-card-border bg-white/70 text-center text-text-muted">
-                    <Languages size={38} className="mb-4 text-slate-300" />
-                    <p className="text-base font-medium text-foreground">
-                      字幕流准备就绪
-                    </p>
-                    <p className="mt-2 text-sm leading-7 text-text-muted">
-                      一句话说完后，会先落原文，再在下方补出极速中文翻译。
-                    </p>
-                  </div>
-                ) : (
-                  subtitles.map((item) => (
-                    <article
-                      key={item.id}
-                      className="rounded-[28px] border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_34px_-20px_rgba(15,23,42,0.2)] transition-all duration-300"
-                    >
-                      <div className="rounded-2xl bg-slate-900 px-4 py-3 text-white">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
-                          Original
-                        </p>
-                        <p className="mt-2 text-lg font-medium leading-8">
-                          {item.originalText}
-                        </p>
-                      </div>
-
-                      <div className="mt-3 rounded-2xl border border-primary/15 bg-[linear-gradient(135deg,rgba(239,246,255,0.98),rgba(245,243,255,0.96))] px-4 py-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/65">
-                          Chinese
-                        </p>
-                        {item.status === "sending" ? (
-                          <div className="mt-3 flex items-center gap-2 text-sm text-primary animate-pulse">
-                            <Sparkles size={14} />
-                            正在生成极速中文翻译...
-                          </div>
-                        ) : item.status === "error" ? (
-                          <div className="mt-3 flex items-center gap-2 text-sm text-rose-600">
-                            <AlertCircle size={14} />
-                            {item.translation}
-                          </div>
-                        ) : (
-                          <p className="mt-2 text-xl font-semibold leading-8 text-foreground">
-                            {item.translation}
+                    subtitles.map((item) => (
+                      <article
+                        key={item.id}
+                        className="rounded-[28px] border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_34px_-20px_rgba(15,23,42,0.2)] transition-all duration-300"
+                      >
+                        <div className="rounded-2xl bg-slate-900 px-4 py-3 text-white">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
+                            Original
                           </p>
-                        )}
-                      </div>
-                    </article>
-                  ))
-                )}
+                          <p className="mt-2 text-lg font-medium leading-8">
+                            {item.originalText}
+                          </p>
+                        </div>
+
+                        <div className="mt-3 rounded-2xl border border-primary/15 bg-[linear-gradient(135deg,rgba(239,246,255,0.98),rgba(245,243,255,0.96))] px-4 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/65">
+                            Chinese
+                          </p>
+                          {item.status === "sending" ? (
+                            <div className="mt-3 flex items-center gap-2 text-sm text-primary animate-pulse">
+                              <Sparkles size={14} />
+                              正在生成极速中文翻译...
+                            </div>
+                          ) : item.status === "error" ? (
+                            <div className="mt-3 flex items-center gap-2 text-sm text-rose-600">
+                              <AlertCircle size={14} />
+                              {item.translation}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xl font-semibold leading-8 text-foreground">
+                              {item.translation}
+                            </p>
+                          )}
+                        </div>
+                      </article>
+                    ))
+                  )}
+                  <div ref={subtitleBottomRef} className="h-0 shrink-0" />
+                </div>
               </div>
             </div>
           </div>
