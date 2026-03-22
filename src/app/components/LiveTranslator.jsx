@@ -639,7 +639,7 @@ export default function LiveTranslator() {
       <Header />
 
       <main className="mx-auto flex min-h-[calc(100vh-64px)] w-full max-w-[1600px] flex-col px-4 py-6 lg:px-8">
-        <section className="rounded-[32px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,246,255,0.9))] p-5 shadow-[0_24px_80px_-28px_rgba(37,99,235,0.28)]">
+        <section className="animate-fade-in-up rounded-[32px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,246,255,0.9))] p-5 shadow-[0_24px_80px_-28px_rgba(37,99,235,0.28)]">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-white shadow-lg shadow-primary/25">
@@ -719,19 +719,19 @@ export default function LiveTranslator() {
         </section>
 
         {!isSupported && (
-          <div className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-7 text-amber-900 shadow-sm">
+          <div className="mt-6 animate-fade-in-up-delay-1 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-7 text-amber-900 shadow-sm">
             当前浏览器不支持 `SpeechRecognition`。比赛演示建议使用最新版 Chrome 或 Edge。
           </div>
         )}
 
         {errorMessage && (
-          <div className="mt-6 rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm leading-7 text-rose-700 shadow-sm">
+          <div className="mt-6 animate-fade-in-up-delay-1 rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm leading-7 text-rose-700 shadow-sm">
             {errorMessage}
           </div>
         )}
 
         <section className="mt-6 grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_420px]">
-          <div className="min-h-0 rounded-[32px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] p-5 shadow-[0_20px_60px_-28px_rgba(15,23,42,0.16)]">
+          <div className="animate-fade-in-up-delay-1 min-h-0 rounded-[32px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] p-5 shadow-[0_20px_60px_-28px_rgba(15,23,42,0.16)]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">
@@ -826,7 +826,7 @@ export default function LiveTranslator() {
             </div>
           </div>
 
-          <aside className="min-h-0 rounded-[32px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,243,255,0.95))] p-5 shadow-[0_20px_60px_-28px_rgba(88,28,135,0.22)] lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)]">
+          <aside className="animate-fade-in-up-delay-2 min-h-0 rounded-[32px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,243,255,0.95))] p-5 shadow-[0_20px_60px_-28px_rgba(88,28,135,0.22)] lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-500">
