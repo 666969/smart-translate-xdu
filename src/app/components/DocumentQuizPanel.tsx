@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import katex from "katex";
 import MarkdownRenderer from "./MarkdownRenderer";
 import { addWrongAnswer, resolveOwnerId } from "@/lib/db";
 import { useAuth } from "@/hooks/useAuth";
@@ -87,6 +88,81 @@ function getQuizAnswer(item: QuizItem, lang: QuizLang) {
   return legacyAnswer;
 }
 
+function countUnescapedDollarSigns(text: string) {
+  let count = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "$" && text[index - 1] !== "\\") {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function normalizeQuizInlineMathMarkup(content: string) {
+  let normalized = content
+    .replace(/\\{2,}(?=[A-Za-z])/gu, "\\")
+    .replace(/\\+\$/gu, "$")
+    .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
+    .replace(/\$(?=\})/gu, "");
+
+  normalized = normalized.replace(
+    /(?<!\$)((?:[A-Za-z](?:_[0-9A-Za-z]+)?|[A-Za-z]\([^)\n]+\))\s*(?:=|\\neq|≤|≥|<|>)\s*(?:0|[A-Za-z](?:_[0-9A-Za-z]+)?|[A-Za-z]\([^)\n]+\)))(?!\$)/gu,
+    (_, candidate: string) => `$${candidate.trim()}$`
+  );
+
+  if (countUnescapedDollarSigns(normalized) % 2 === 1) {
+    normalized = normalized.replace(/(?<!\\)\$([^$\n]+)$/u, "$$$1$");
+  }
+
+  return normalized;
+}
+
+function QuizInlineMathText({
+  content,
+  className,
+}: {
+  content: string;
+  className?: string;
+}) {
+  const normalized = normalizeQuizInlineMathMarkup(content);
+  const segments = normalized.split(/(\$[^$\n]+\$)/g).filter(Boolean);
+
+  if (!/\$[^$\n]+\$/u.test(normalized)) {
+    return <div className={className}>{normalized}</div>;
+  }
+
+  return (
+    <div className={className}>
+      {segments.map((segment, index) => {
+        if (segment.startsWith("$") && segment.endsWith("$")) {
+          const math = segment.slice(1, -1).trim();
+          return (
+            <span
+              key={`math-${index}`}
+              className="inline-block align-baseline"
+              dangerouslySetInnerHTML={{
+                __html: katex.renderToString(math, {
+                  throwOnError: false,
+                  strict: "ignore",
+                  displayMode: false,
+                }),
+              }}
+            />
+          );
+        }
+
+        return (
+          <span key={`text-${index}`} className="whitespace-pre-wrap">
+            {segment}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ========== Interactive Quiz Question ========== */
 
 function QuizQuestion({
@@ -145,9 +221,9 @@ function QuizQuestion({
           {idx + 1}.
         </span>
         <div className="min-w-0 flex-1">
-          <MarkdownRenderer
+          <QuizInlineMathText
             content={getQuizQuestion(q, quizLang)}
-            className="[&>p]:mb-0 [&_p]:text-sm [&_p]:font-medium [&_p]:leading-7 [&_.math-display]:my-1 [&_.math-display]:py-1"
+            className="text-sm font-medium leading-7 text-foreground"
           />
         </div>
       </div>
@@ -177,9 +253,9 @@ function QuizQuestion({
                   {String.fromCharCode(65 + optIdx)}.
                 </span>
                 <div className="min-w-0 flex-1">
-                  <MarkdownRenderer
+                  <QuizInlineMathText
                     content={opt}
-                    className="[&>p]:mb-0 [&_p]:text-sm [&_p]:leading-6 [&_.math-display]:my-1 [&_.math-display]:py-1"
+                    className="text-sm leading-6 text-foreground"
                   />
                 </div>
                 {isCorrect && <span className="text-green-500 text-xs mt-0.5">✅</span>}
@@ -210,9 +286,9 @@ function QuizQuestion({
               {getQuizAnswerLabel(quizLang)}：
             </span>
             <div className="min-w-0 flex-1">
-              <MarkdownRenderer
+              <QuizInlineMathText
                 content={correctAnswer}
-                className="[&>p]:mb-0 [&_p]:text-sm [&_p]:font-semibold [&_p]:leading-6 [&_.math-display]:my-1 [&_.math-display]:py-1"
+                className="text-sm font-semibold leading-6 text-emerald-700"
               />
             </div>
           </div>
