@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { Star } from "lucide-react";
 import SpeakButton from "./SpeakButton";
+import MarkdownRenderer from "./MarkdownRenderer";
 import { addVocab, isVocabExists, resolveOwnerId } from "@/lib/db";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -150,9 +151,13 @@ export default function KeywordGlossary({
               <CollectButton item={item} ownerId={ownerId} />
             </div>
           </div>
-          <p className="mt-1.5 text-sm leading-7 text-slate-600">
-            {item.definition_zh}
-          </p>
+          <div className="mt-1.5 text-sm leading-7 text-slate-600">
+            <MarkdownRenderer
+              content={item.definition_zh}
+              compact
+              className="[&_p]:m-0 [&_p]:text-sm [&_p]:leading-7 [&_.math-display]:my-1 [&_.math-display]:py-0.5"
+            />
+          </div>
         </div>
       ))}
     </div>
