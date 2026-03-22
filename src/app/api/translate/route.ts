@@ -887,20 +887,20 @@ function normalizeQuizItem(raw: unknown): DocumentQuizItem | null {
   const record = raw as Record<string, unknown>;
   const answer = normalizeText(record.answer);
   const item: DocumentQuizItem = {
-    question_fr: normalizeText(record.question_fr),
-    question_zh: normalizeText(record.question_zh),
-    question_en: normalizeText(record.question_en),
-    options_fr: normalizeStringArray(record.options_fr),
-    options_zh: normalizeStringArray(record.options_zh),
-    options_en: normalizeStringArray(record.options_en),
-    answer_fr: normalizeText(record.answer_fr),
-    answer_zh: normalizeText(record.answer_zh),
-    answer_en: normalizeText(record.answer_en),
+    question_fr: normalizeQuizMathText(record.question_fr),
+    question_zh: normalizeQuizMathText(record.question_zh),
+    question_en: normalizeQuizMathText(record.question_en),
+    options_fr: normalizeQuizMathStringArray(record.options_fr),
+    options_zh: normalizeQuizMathStringArray(record.options_zh),
+    options_en: normalizeQuizMathStringArray(record.options_en),
+    answer_fr: normalizeQuizMathText(record.answer_fr),
+    answer_zh: normalizeQuizMathText(record.answer_zh),
+    answer_en: normalizeQuizMathText(record.answer_en),
     answer: answer || undefined,
-    explanation_fr: normalizeText(record.explanation_fr) || undefined,
-    explanation_zh: normalizeText(record.explanation_zh) || undefined,
-    explanation_en: normalizeText(record.explanation_en) || undefined,
-    explanation: normalizeText(record.explanation) || undefined,
+    explanation_fr: normalizeQuizMathText(record.explanation_fr) || undefined,
+    explanation_zh: normalizeQuizMathText(record.explanation_zh) || undefined,
+    explanation_en: normalizeQuizMathText(record.explanation_en) || undefined,
+    explanation: normalizeQuizMathText(record.explanation) || undefined,
   };
 
   const legacyLetterIndex = ["A", "B", "C", "D"].indexOf(answer.toUpperCase());
@@ -960,6 +960,16 @@ function normalizeDocumentResponse(raw: Record<string, unknown>): DocumentRespon
   }
 
   return response;
+}
+
+function normalizeQuizMathText(value: unknown) {
+  return repairLatexArtifacts(wrapObviousInlineMath(normalizeText(value)));
+}
+
+function normalizeQuizMathStringArray(value: unknown) {
+  return normalizeStringArray(value).map((item) =>
+    repairLatexArtifacts(wrapObviousInlineMath(item))
+  );
 }
 
 function extractTextFromUserContent(userContent: UserContent) {
