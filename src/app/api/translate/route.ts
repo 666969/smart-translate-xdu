@@ -63,6 +63,8 @@ const STRICT_JSON_PREFIX = `你是一个无情的、顶级的理工科翻译专�
 【最高指令】：除必要的数学公式和原专有名词外，所有输出的文本内容（包括翻译和解析）必须、绝对、强制使用简体中文！ 不要输出任何废话，只输出合法的 JSON 数据。
 禁止输出 Markdown 代码块、解释性前后缀、注释、标题、寒暄、道歉，禁止输出任何 JSON 之外的文本。`;
 
+const LATEX_COMMAND_PATTERN =
+  /\\(?:frac|int|lim|sum|sqrt|sin|cos|tan|ln|log|pi|nu|forall|exists|infty|alpha|beta|gamma|theta|phi|omega|mathbb|mathrm|mathcal|operatorname|cdot|times|leq|geq|neq|to|rightarrow|left|right)\b/u;
 const FRENCH_TERM_PATTERN = /^[A-Za-zÀ-ÖØ-öø-ÿŒœÆæÇç' -]+$/u;
 const FRENCH_STOPWORDS = new Set([
   "le", "la", "les", "un", "une", "des", "du", "de", "d", "et", "ou", "est",
@@ -533,6 +535,18 @@ function hasChineseText(value: string) {
   return /[\u4e00-\u9fff]/u.test(value);
 }
 
+function countUnescapedDollarSigns(text: string) {
+  let count = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "$" && text[index - 1] !== "\\") {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
 function stripLatexBlocks(value: string) {
   return value
     .replace(/\$\$[\s\S]*?\$\$/g, " ")
@@ -582,8 +596,46 @@ function repairMathBody(body: string) {
     .replace(/(^|[\s(,，;；:：])in(?=\s+\\mathbb)/gu, "$1\\in");
 }
 
+function looksLikeMathBodyCandidate(candidate: string) {
+  const trimmed = repairMathBody(candidate);
+
+  if (!trimmed || /[\u4e00-\u9fff]/u.test(trimmed)) {
+    return false;
+  }
+
+  const hasAlgebraicRatio =
+    /\//u.test(trimmed) && /\d/u.test(trimmed) && /[A-Za-zα-ωΑ-Ω\\]/u.test(trimmed);
+
+  return (
+    LATEX_COMMAND_PATTERN.test(trimmed) ||
+    hasAlgebraicRatio ||
+    /[=^_{}|]/u.test(trimmed) ||
+    /[∀∃∈ℝα-ωΑ-Ω∫∑∞≈≠≤≥±]/u.test(trimmed) ||
+    /\b[A-Za-z]\w*\([^)\n]+\)/u.test(trimmed)
+  );
+}
+
+function closeDanglingInlineMath(text: string) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      if (countUnescapedDollarSigns(line) % 2 === 0) {
+        return line;
+      }
+
+      return line.replace(/(?<!\\)\$([^$\n]+)$/u, (match, candidate: string) => {
+        if (!looksLikeMathBodyCandidate(candidate)) {
+          return match;
+        }
+
+        return `$${repairMathBody(candidate)}$`;
+      });
+    })
+    .join("\n");
+}
+
 function repairLatexArtifacts(text: string) {
-  const segments = text.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g);
+  const segments = closeDanglingInlineMath(text).split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g);
 
   return segments
     .map((segment) => {
@@ -620,7 +672,9 @@ function normalizeKeywordItems(value: unknown) {
       const record = item as Record<string, unknown>;
       const term_fr = normalizeText(record.term_fr).replace(/\s+/g, " ");
       const term_zh = normalizeText(record.term_zh);
-      const definition_zh = normalizeText(record.definition_zh);
+      const definition_zh = repairLatexArtifacts(
+        wrapObviousInlineMath(normalizeText(record.definition_zh))
+      );
 
       if (
         !term_fr ||
@@ -646,35 +700,67 @@ function normalizeKeywordItems(value: unknown) {
 }
 
 function parseKeywordItemsFromText(content: string) {
-  return content
+  const lines = content
+    .replace(/（/g, "(")
+    .replace(/）/g, ")")
+    .replace(/：/g, " : ")
+    .replace(/^\s*(?:[-*•]\s+|\d+[.)、]\s+)/gmu, "")
+    .replace(/\s+/g, " ")
+    .replace(
+      /([^\n])\s+([A-Za-zÀ-ÖØ-öø-ÿŒœÆæÇç][A-Za-zÀ-ÖØ-öø-ÿŒœÆæÇç' -]{0,80}\s*\([^)]+\)\s*:)/gu,
+      "$1\n$2"
+    )
+    .replace(/\n{2,}/g, "\n")
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const match = line.match(/^(.*?) \((.*?)\) : (.*)$/u);
-      if (!match) {
-        return null;
-      }
+    .filter(Boolean);
 
-      const [, term_fr, term_zh, definition_zh] = match;
-      const normalized = {
-        term_fr: term_fr.trim().replace(/\s+/g, " "),
-        term_zh: term_zh.trim(),
-        definition_zh: definition_zh.trim(),
+  const items: SnippetKeywordItem[] = [];
+  let currentItem: SnippetKeywordItem | null = null;
+
+  const pushCurrentItem = () => {
+    if (!currentItem) {
+      return;
+    }
+
+    const normalized = {
+      term_fr: currentItem.term_fr.trim().replace(/\s+/g, " "),
+      term_zh: currentItem.term_zh.trim(),
+      definition_zh: repairLatexArtifacts(
+        wrapObviousInlineMath(currentItem.definition_zh.trim())
+      ),
+    };
+
+    if (
+      !FRENCH_TERM_PATTERN.test(normalized.term_fr) ||
+      !hasChineseText(normalized.term_zh) ||
+      !hasChineseText(normalized.definition_zh)
+    ) {
+      return;
+    }
+
+    items.push(normalized);
+  };
+
+  for (const line of lines) {
+    const match = line.match(/^(.*?)\s*\((.*?)\)\s*:\s*(.*)$/u);
+    if (match) {
+      pushCurrentItem();
+      currentItem = {
+        term_fr: match[1],
+        term_zh: match[2],
+        definition_zh: match[3],
       };
+      continue;
+    }
 
-      if (
-        !FRENCH_TERM_PATTERN.test(normalized.term_fr) ||
-        !hasChineseText(normalized.term_zh) ||
-        !hasChineseText(normalized.definition_zh)
-      ) {
-        return null;
-      }
+    if (currentItem) {
+      currentItem.definition_zh = `${currentItem.definition_zh} ${line}`.trim();
+    }
+  }
 
-      return normalized;
-    })
-    .filter((item): item is SnippetKeywordItem => Boolean(item))
-    .slice(0, 5);
+  pushCurrentItem();
+  return items.slice(0, 5);
 }
 
 function buildKeywordString(items: SnippetKeywordItem[]) {

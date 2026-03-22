@@ -74,8 +74,12 @@ function looksLikeInlineFormulaCandidate(candidate: string) {
     return false;
   }
 
+  const hasAlgebraicRatio =
+    /\//u.test(trimmed) && /\d/u.test(trimmed) && /[A-Za-zα-ωΑ-Ω\\]/u.test(trimmed);
+
   return (
     LATEX_COMMAND_PATTERN.test(trimmed) ||
+    hasAlgebraicRatio ||
     /[=^_{}|]/u.test(trimmed) ||
     /[∀∃∈ℝα-ωΑ-Ω∫∑∞≈≠≤≥±]/u.test(trimmed) ||
     /\b[A-Za-z]\w*\([^)\n]+\)/u.test(trimmed)

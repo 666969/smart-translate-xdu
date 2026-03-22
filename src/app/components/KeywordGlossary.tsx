@@ -20,12 +20,16 @@ interface KeywordGlossaryProps {
 
 function normalizeKeywordContent(content: string) {
   return content
+    .replace(/（/g, "(")
+    .replace(/）/g, ")")
     .replace(/：/g, " : ")
+    .replace(/^\s*(?:[-*•]\s+|\d+[.)、]\s+)/gmu, "")
     .replace(/\s+/g, " ")
     .replace(
-      /([^\n])\s+([A-Za-zÀ-ÖØ-öø-ÿŒœÆæÇç][A-Za-zÀ-ÖØ-öø-ÿŒœÆæÇç' -]{0,80}\s+\([^)]+\)\s+:)/gu,
+      /([^\n])\s+([A-Za-zÀ-ÖØ-öø-ÿŒœÆæÇç][A-Za-zÀ-ÖØ-öø-ÿŒœÆæÇç' -]{0,80}\s*\([^)]+\)\s*:)/gu,
       "$1\n$2"
-    );
+    )
+    .replace(/\n{2,}/g, "\n");
 }
 
 function parseKeywordItems(content?: string) {
@@ -33,23 +37,47 @@ function parseKeywordItems(content?: string) {
     return [] as KeywordItem[];
   }
 
-  return normalizeKeywordContent(content)
+  const lines = normalizeKeywordContent(content)
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const match = line.match(/^(.*?)\s+\((.*?)\)\s+:\s+(.*)$/u);
-      if (!match) {
-        return null;
-      }
+    .filter(Boolean);
 
-      return {
+  const parsedItems: KeywordItem[] = [];
+  let currentItem: KeywordItem | null = null;
+
+  const pushCurrentItem = () => {
+    if (
+      currentItem?.term_fr &&
+      currentItem.term_zh &&
+      currentItem.definition_zh
+    ) {
+      parsedItems.push({
+        term_fr: currentItem.term_fr.trim(),
+        term_zh: currentItem.term_zh.trim(),
+        definition_zh: currentItem.definition_zh.trim(),
+      });
+    }
+  };
+
+  for (const line of lines) {
+    const match = line.match(/^(.*?)\s*\((.*?)\)\s*:\s*(.*)$/u);
+    if (match) {
+      pushCurrentItem();
+      currentItem = {
         term_fr: match[1].trim(),
         term_zh: match[2].trim(),
         definition_zh: match[3].trim(),
       };
-    })
-    .filter((item): item is KeywordItem => Boolean(item));
+      continue;
+    }
+
+    if (currentItem) {
+      currentItem.definition_zh = `${currentItem.definition_zh} ${line}`.trim();
+    }
+  }
+
+  pushCurrentItem();
+  return parsedItems;
 }
 
 function CollectButton({ item, ownerId }: { item: KeywordItem; ownerId: string }) {
