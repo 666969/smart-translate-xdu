@@ -572,6 +572,8 @@ function wrapObviousInlineMath(text: string) {
 
 function repairMathBody(body: string) {
   return body
+    .replace(/\\{2,}(?=[A-Za-z])/gu, "\\")
+    .replace(/\\+\$/gu, "$")
     .replace(/\bmathbbb\b/gu, "\\mathbb")
     .replace(/\bmathcal\b/gu, "\\mathcal")
     .replace(/\bmathrm\b/gu, "\\mathrm")
@@ -635,7 +637,7 @@ function closeDanglingInlineMath(text: string) {
 }
 
 function repairLatexArtifacts(text: string) {
-  const segments = closeDanglingInlineMath(text.replace(/\\\$/g, "$")).split(
+  const segments = closeDanglingInlineMath(text.replace(/\\+\$/g, "$")).split(
     /(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g
   );
 
