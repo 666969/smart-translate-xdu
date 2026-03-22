@@ -165,7 +165,21 @@ function applyDictionaryTranslation(text, language) {
   return translated;
 }
 
-async function mockFastTranslate(text, language) {
+function decodeHtmlEntities(text) {
+  if (typeof window === "undefined") {
+    return text;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = text;
+  return textarea.value;
+}
+
+function getFastTranslateLanguagePair(language) {
+  return language.startsWith("fr") ? "fr|zh-CN" : "en|zh-CN";
+}
+
+async function fallbackFastTranslate(text, language) {
   await wait(120 + Math.random() * 160);
 
   const translated = applyDictionaryTranslation(text, language);
@@ -182,6 +196,50 @@ async function mockFastTranslate(text, language) {
   }
 
   return `${languageLabel}课程内容正在讲解一个理工科知识点。`;
+}
+
+async function fastTranslateSubtitle(text, language) {
+  const normalizedText = normalizeSentence(text);
+  if (!normalizedText) {
+    return "";
+  }
+
+  const url = new URL("https://api.mymemory.translated.net/get");
+  url.searchParams.set("q", normalizedText);
+  url.searchParams.set("langpair", getFastTranslateLanguagePair(language));
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`MyMemory request failed: ${response.status}`);
+    }
+
+    const payload = await response.json();
+    const translatedText = decodeHtmlEntities(
+      String(payload?.responseData?.translatedText || "")
+    ).trim();
+
+    if (!translatedText) {
+      throw new Error("MyMemory returned empty translation");
+    }
+
+    return translatedText;
+  } catch (error) {
+    console.error("MyMemory fast translation failed, fallback to local rules:", error);
+    return fallbackFastTranslate(normalizedText, language);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function extractInsightCards(bufferText) {
@@ -451,7 +509,7 @@ export default function LiveTranslator() {
     }
 
     try {
-      const translation = await mockFastTranslate(originalText, language);
+      const translation = await fastTranslateSubtitle(originalText, language);
       setSubtitles((prev) =>
         prev.map((item) =>
           item.id === subtitleId
