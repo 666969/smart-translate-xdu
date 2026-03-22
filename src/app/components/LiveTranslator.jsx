@@ -280,6 +280,103 @@ async function fetchAiInsights(bufferText) {
   return extractInsightCards(bufferText);
 }
 
+const TAB_RECORDER_MIME_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "video/webm;codecs=opus",
+];
+
+function getTranscribeLanguageCode(language) {
+  return language.startsWith("fr") ? "fr" : "en";
+}
+
+function getPreferredRecorderMimeType() {
+  if (typeof window === "undefined" || typeof MediaRecorder === "undefined") {
+    return "";
+  }
+
+  return (
+    TAB_RECORDER_MIME_TYPES.find((mimeType) =>
+      MediaRecorder.isTypeSupported(mimeType)
+    ) || ""
+  );
+}
+
+function getRecorderFileExtension(mimeType) {
+  if (mimeType.includes("mp4")) {
+    return "mp4";
+  }
+
+  if (mimeType.includes("ogg")) {
+    return "ogg";
+  }
+
+  return "webm";
+}
+
+function splitTranscriptBuffer(rawText) {
+  const normalized = normalizeSentence(rawText);
+  if (!normalized) {
+    return { completedSentences: [], remainder: "" };
+  }
+
+  const completedSentences = [];
+  let current = "";
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    current += char;
+
+    const isSentenceBoundary =
+      /[。！？!?；;]/u.test(char) ||
+      (char === "." && (!normalized[index + 1] || /\s/u.test(normalized[index + 1])));
+
+    if (isSentenceBoundary) {
+      const sentence = normalizeSentence(current);
+      if (sentence) {
+        completedSentences.push(sentence);
+      }
+      current = "";
+    }
+  }
+
+  let remainder = normalizeSentence(current);
+  if (remainder && countWords(remainder) >= 24) {
+    completedSentences.push(remainder);
+    remainder = "";
+  }
+
+  return { completedSentences, remainder };
+}
+
+async function transcribeAudioChunk(blob, language) {
+  const mimeType = blob.type || "audio/webm";
+  const extension = getRecorderFileExtension(mimeType);
+  const file = new File([blob], `live-${Date.now()}.${extension}`, {
+    type: mimeType,
+  });
+  const formData = new FormData();
+  formData.append("audio", file);
+  formData.append("language", getTranscribeLanguageCode(language));
+
+  const response = await fetch("/api/live-transcribe", {
+    method: "POST",
+    body: formData,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      typeof payload?.error === "string"
+        ? payload.error
+        : "标签页音频转写失败，请稍后重试。"
+    );
+  }
+
+  return normalizeSentence(String(payload?.text || ""));
+}
+
 function useSpeech({ language, onFinalSentence }) {
   const [isSupported] = useState(() => {
     if (typeof window === "undefined") {
@@ -430,14 +527,21 @@ function useSpeech({ language, onFinalSentence }) {
 }
 
 export default function LiveTranslator() {
+  const [inputSource, setInputSource] = useState("tab");
   const [language, setLanguage] = useState("fr-FR");
   const [subtitles, setSubtitles] = useState([]);
   const [insights, setInsights] = useState([]);
   const [isInsightLoading, setIsInsightLoading] = useState(false);
+  const [tabIsListening, setTabIsListening] = useState(false);
+  const [tabInterimText, setTabInterimText] = useState("");
+  const [tabErrorMessage, setTabErrorMessage] = useState(null);
+  const [isTabTranscribing, setIsTabTranscribing] = useState(false);
 
   const subtitleScrollRef = useRef(null);
   const subtitleBottomRef = useRef(null);
   const insightScrollRef = useRef(null);
+  const displayStreamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
   const bufferRef = useRef({
     sentences: [],
     wordCount: 0,
@@ -446,6 +550,12 @@ export default function LiveTranslator() {
   const insightInFlightRef = useRef(false);
   const translationQueueRef = useRef([]);
   const translationInFlightRef = useRef(0);
+  const tabTranscribeQueueRef = useRef([]);
+  const tabTranscribeInFlightRef = useRef(false);
+  const pendingTranscriptRef = useRef("");
+  const tabListeningRef = useRef(false);
+  const stopMicListeningRef = useRef(() => {});
+  const stopTabListeningRef = useRef(() => {});
 
   const updateSubtitleTranslation = (subtitleId, payload) => {
     startTransition(() => {
@@ -568,11 +678,215 @@ export default function LiveTranslator() {
     processTranslationQueue();
   };
 
-  const { isSupported, isListening, interimText, errorMessage, startListening, stopListening } =
+  const flushPendingTranscript = () => {
+    const remainder = normalizeSentence(pendingTranscriptRef.current);
+    if (!remainder) {
+      return;
+    }
+
+    pendingTranscriptRef.current = "";
+    setTabInterimText("");
+    handleFinalSentence(remainder);
+  };
+
+  const flushPendingTranscriptIfIdle = () => {
+    if (
+      tabListeningRef.current ||
+      tabTranscribeInFlightRef.current ||
+      tabTranscribeQueueRef.current.length > 0
+    ) {
+      return;
+    }
+
+    flushPendingTranscript();
+  };
+
+  const handleTabTranscriptChunk = (chunkText) => {
+    if (!chunkText) {
+      return;
+    }
+
+    const combinedText = normalizeSentence(
+      `${pendingTranscriptRef.current} ${chunkText}`
+    );
+    const { completedSentences, remainder } = splitTranscriptBuffer(combinedText);
+
+    pendingTranscriptRef.current = remainder;
+    setTabInterimText(remainder);
+    completedSentences.forEach((sentence) => {
+      handleFinalSentence(sentence);
+    });
+  };
+
+  const processTabTranscribeQueue = () => {
+    if (tabTranscribeInFlightRef.current) {
+      return;
+    }
+
+    const task = tabTranscribeQueueRef.current.shift();
+    if (!task) {
+      setIsTabTranscribing(false);
+      flushPendingTranscriptIfIdle();
+      return;
+    }
+
+    tabTranscribeInFlightRef.current = true;
+    setIsTabTranscribing(true);
+
+    void transcribeAudioChunk(task.blob, task.language)
+      .then((text) => {
+        handleTabTranscriptChunk(text);
+      })
+      .catch((error) => {
+        console.error("Tab audio transcription failed:", error);
+        setTabErrorMessage(
+          error instanceof Error && error.message
+            ? error.message
+            : "标签页音频转写失败，请重新开始同传。"
+        );
+      })
+      .finally(() => {
+        tabTranscribeInFlightRef.current = false;
+        if (tabTranscribeQueueRef.current.length > 0) {
+          processTabTranscribeQueue();
+          return;
+        }
+
+        setIsTabTranscribing(false);
+        flushPendingTranscriptIfIdle();
+      });
+  };
+
+  const stopTabListening = () => {
+    tabListeningRef.current = false;
+    setTabIsListening(false);
+
+    const recorder = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+
+    const displayStream = displayStreamRef.current;
+    displayStreamRef.current = null;
+    if (displayStream) {
+      displayStream.getTracks().forEach((track) => {
+        track.onended = null;
+        track.stop();
+      });
+    }
+
+    flushPendingTranscriptIfIdle();
+  };
+
+  const startTabListening = async () => {
+    if (
+      typeof window === "undefined" ||
+      !navigator.mediaDevices?.getDisplayMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      setTabErrorMessage("当前浏览器不支持标签页音频共享，请改用最新版 Chrome。");
+      return;
+    }
+
+    setTabErrorMessage(null);
+    pendingTranscriptRef.current = "";
+    setTabInterimText("正在等待你共享带音频的浏览器标签页...");
+
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
+      const audioTracks = displayStream.getAudioTracks();
+
+      if (audioTracks.length === 0) {
+        displayStream.getTracks().forEach((track) => {
+          track.stop();
+        });
+        setTabInterimText("");
+        setTabErrorMessage("没有检测到共享音频。请选择浏览器标签页，并勾选“共享音频”。");
+        return;
+      }
+
+      const audioStream = new MediaStream(audioTracks);
+      const mimeType = getPreferredRecorderMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(audioStream, { mimeType })
+        : new MediaRecorder(audioStream);
+
+      displayStreamRef.current = displayStream;
+      mediaRecorderRef.current = recorder;
+      tabListeningRef.current = true;
+      setTabIsListening(true);
+      setTabInterimText("正在接收标签页音频，几秒后会开始落字幕...");
+
+      recorder.ondataavailable = (event) => {
+        if (!event.data || event.data.size === 0) {
+          return;
+        }
+
+        tabTranscribeQueueRef.current.push({
+          blob: event.data,
+          language,
+        });
+        processTabTranscribeQueue();
+      };
+
+      recorder.onerror = () => {
+        setTabErrorMessage("标签页音频录制失败，请重新开始同传。");
+      };
+
+      recorder.onstop = () => {
+        setTabIsListening(false);
+        tabListeningRef.current = false;
+        flushPendingTranscriptIfIdle();
+      };
+
+      displayStream.getTracks().forEach((track) => {
+        track.onended = () => {
+          stopTabListening();
+        };
+      });
+
+      recorder.start(2500);
+    } catch (error) {
+      console.error("Display audio capture failed:", error);
+      setTabInterimText("");
+      setTabErrorMessage("你取消了标签页共享，或浏览器没有成功拿到音频权限。");
+      stopTabListening();
+    }
+  };
+
+  const {
+    isSupported: isMicSupported,
+    isListening: isMicListening,
+    interimText: micInterimText,
+    errorMessage: micErrorMessage,
+    startListening: startMicListening,
+    stopListening: stopMicListening,
+  } =
     useSpeech({
       language,
       onFinalSentence: handleFinalSentence,
     });
+  stopMicListeningRef.current = stopMicListening;
+  stopTabListeningRef.current = stopTabListening;
+
+  const isTabSupported = useState(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+
+    return Boolean(
+      navigator.mediaDevices?.getDisplayMedia && typeof MediaRecorder !== "undefined"
+    );
+  })[0];
+
+  const isListening = inputSource === "tab" ? tabIsListening : isMicListening;
+  const interimText = inputSource === "tab" ? tabInterimText : micInterimText;
+  const errorMessage = inputSource === "tab" ? tabErrorMessage : micErrorMessage;
+  const isSupported = inputSource === "tab" ? isTabSupported : isMicSupported;
 
   useEffect(() => {
     const scrollHost = subtitleScrollRef.current;
@@ -608,23 +922,51 @@ export default function LiveTranslator() {
       if (insightTimerRef.current) {
         clearTimeout(insightTimerRef.current);
       }
+
+      stopMicListeningRef.current();
+      stopTabListeningRef.current();
     };
   }, []);
 
+  useEffect(() => {
+    if (inputSource === "tab") {
+      stopMicListeningRef.current();
+      return;
+    }
+
+    stopTabListeningRef.current();
+    setTabErrorMessage(null);
+    setTabInterimText("");
+  }, [inputSource]);
+
   const toggleListening = () => {
     if (isListening) {
-      stopListening();
+      if (inputSource === "tab") {
+        stopTabListening();
+      } else {
+        stopMicListening();
+      }
     } else {
-      startListening();
+      if (inputSource === "tab") {
+        void startTabListening();
+      } else {
+        startMicListening();
+      }
     }
   };
 
   const clearAll = () => {
     setSubtitles([]);
     setInsights([]);
+    setTabErrorMessage(null);
+    setTabInterimText("");
     bufferRef.current = { sentences: [], wordCount: 0 };
     translationQueueRef.current = [];
     translationInFlightRef.current = 0;
+    tabTranscribeQueueRef.current = [];
+    tabTranscribeInFlightRef.current = false;
+    pendingTranscriptRef.current = "";
+    setIsTabTranscribing(false);
     if (insightTimerRef.current) {
       clearTimeout(insightTimerRef.current);
       insightTimerRef.current = null;
@@ -653,12 +995,41 @@ export default function LiveTranslator() {
                   随堂同传
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm leading-7 text-text-muted">
-                  左侧用原生语音识别 + 极速机翻保持流式双语字幕，右侧后台异步提取复杂理工科术语，适合课堂演示与比赛答辩。
+                  {inputSource === "tab"
+                    ? "左侧直接接收浏览器标签页音频并快速转写成双语字幕，右侧后台异步提取复杂理工科术语，适合课堂演示与比赛答辩。"
+                    : "左侧用原生语音识别 + 极速机翻保持流式双语字幕，右侧后台异步提取复杂理工科术语，适合老师现场讲解或口述演示。"}
                 </p>
               </div>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+              <div className="inline-flex items-center gap-1 rounded-2xl border border-card-border bg-white/85 p-1 shadow-sm">
+                <button
+                  type="button"
+                  disabled={isListening}
+                  onClick={() => setInputSource("tab")}
+                  className={`rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+                    inputSource === "tab"
+                      ? "bg-primary text-white shadow-sm"
+                      : "text-text-muted hover:text-foreground"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  标签页音频
+                </button>
+                <button
+                  type="button"
+                  disabled={isListening}
+                  onClick={() => setInputSource("mic")}
+                  className={`rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+                    inputSource === "mic"
+                      ? "bg-primary text-white shadow-sm"
+                      : "text-text-muted hover:text-foreground"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  麦克风
+                </button>
+              </div>
+
               <div className="flex items-center gap-2 rounded-2xl border border-card-border bg-white/80 px-4 py-3 shadow-sm">
                 <Globe size={18} className="text-text-muted" />
                 <select
@@ -707,7 +1078,11 @@ export default function LiveTranslator() {
           <div className="mt-5 flex flex-wrap items-center gap-3 text-xs">
             <div className="inline-flex items-center gap-2 rounded-full border border-card-border bg-white/90 px-3 py-1.5 text-text-muted shadow-sm">
               <span className={`h-2.5 w-2.5 rounded-full ${isListening ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
-              {isListening ? "正在聆听课堂内容" : "待机中"}
+              {isListening
+                ? inputSource === "tab"
+                  ? "正在接收标签页音频"
+                  : "正在聆听麦克风内容"
+                : "待机中"}
             </div>
             <div className="inline-flex items-center gap-2 rounded-full border border-card-border bg-white/90 px-3 py-1.5 text-text-muted shadow-sm">
               字幕缓冲：{sentenceCount} 句 / {wordCount} 词
@@ -715,12 +1090,19 @@ export default function LiveTranslator() {
             <div className="inline-flex items-center gap-2 rounded-full border border-card-border bg-white/90 px-3 py-1.5 text-text-muted shadow-sm">
               AI 触发条件：3 句 / 50 词 / 15 秒
             </div>
+            {inputSource === "tab" && (
+              <div className="inline-flex items-center gap-2 rounded-full border border-card-border bg-white/90 px-3 py-1.5 text-text-muted shadow-sm">
+                {isTabTranscribing ? "正在分段转写标签页音频" : "推荐共享当前浏览器标签页并勾选共享音频"}
+              </div>
+            )}
           </div>
         </section>
 
         {!isSupported && (
           <div className="mt-6 animate-fade-in-up-delay-1 rounded-3xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-7 text-amber-900 shadow-sm">
-            当前浏览器不支持 `SpeechRecognition`。比赛演示建议使用最新版 Chrome 或 Edge。
+            {inputSource === "tab"
+              ? "当前浏览器不支持标签页音频共享或 MediaRecorder。比赛演示建议使用最新版 Chrome。"
+              : "当前浏览器不支持 `SpeechRecognition`。比赛演示建议使用最新版 Chrome 或 Edge。"}
           </div>
         )}
 
@@ -762,7 +1144,15 @@ export default function LiveTranslator() {
                     ) : (
                       <div className="flex items-start gap-3 text-slate-300">
                         <span className="mt-1 inline-flex h-3 w-3 rounded-full bg-slate-200" />
-                        <span>{isListening ? "正在等待新的句子结束..." : "点击上方按钮后开始接收课堂语音"}</span>
+                        <span>
+                          {isListening
+                            ? inputSource === "tab"
+                              ? "正在等待新的音频片段进入字幕流..."
+                              : "正在等待新的句子结束..."
+                            : inputSource === "tab"
+                              ? "点击上方按钮后共享浏览器标签页音频"
+                              : "点击上方按钮后开始接收课堂语音"}
+                        </span>
                       </div>
                     )}
                   </div>
