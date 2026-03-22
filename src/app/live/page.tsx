@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Mic, Square, AlertCircle, Globe } from "lucide-react";
+import { Mic, Square, AlertCircle, Globe, Sparkles } from "lucide-react";
 import Header from "../components/Header";
 
 // Type definition for Web Speech API (since it's not standard in all TS envs)
@@ -34,10 +34,13 @@ declare global {
   }
 }
 
+type LiveOutputMode = "transcript" | "ai";
+
 interface TranscriptItem {
   id: string;
   originalText: string;
   translation?: string;
+  outputMode: LiveOutputMode;
   status: "sending" | "success" | "error";
 }
 
@@ -45,12 +48,14 @@ export default function LiveTranslationPage() {
   const [isSupported, setIsSupported] = useState<boolean>(true);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [language, setLanguage] = useState<string>("fr-FR");
+  const [outputMode, setOutputMode] = useState<LiveOutputMode>("transcript");
   const [interimText, setInterimText] = useState<string>("");
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const isIntentionalStopRef = useRef<boolean>(false);
+  const outputModeRef = useRef<LiveOutputMode>("transcript");
   const subtitlesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom of subtitles
@@ -61,6 +66,95 @@ export default function LiveTranslationPage() {
   useEffect(() => {
     scrollToBottom();
   }, [transcripts, interimText]);
+
+  useEffect(() => {
+    outputModeRef.current = outputMode;
+  }, [outputMode]);
+
+  const startRecording = () => {
+    if (!recognitionRef.current) return;
+    setErrorMessage(null);
+    isIntentionalStopRef.current = false;
+    try {
+      recognitionRef.current.start();
+    } catch (e) {
+      console.error("Start error", e);
+    }
+  };
+
+  const stopRecording = () => {
+    if (!recognitionRef.current) return;
+    isIntentionalStopRef.current = true;
+    recognitionRef.current.stop();
+    setIsRecording(false);
+    setInterimText("");
+  };
+
+  const handleFinalSpeech = async (text: string) => {
+    const newItemId = Date.now().toString() + Math.random().toString(36).substring(7);
+    const activeOutputMode = outputModeRef.current;
+
+    if (activeOutputMode === "transcript") {
+      setTranscripts((prev) => [
+        ...prev,
+        {
+          id: newItemId,
+          originalText: text,
+          outputMode: "transcript",
+          status: "success",
+        },
+      ]);
+      return;
+    }
+
+    setTranscripts((prev) => [
+      ...prev,
+      {
+        id: newItemId,
+        originalText: text,
+        outputMode: "ai",
+        status: "sending",
+      },
+    ]);
+
+    try {
+      const formData = new FormData();
+      formData.append("mode", "live");
+      formData.append("text", text);
+
+      const response = await fetch("/api/translate", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("API Request Failed");
+      }
+
+      const data = await response.json();
+
+      setTranscripts((prev) =>
+        prev.map((item) =>
+          item.id === newItemId
+            ? { ...item, translation: data.translation, status: "success" }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error("Translation error:", error);
+      setTranscripts((prev) =>
+        prev.map((item) =>
+          item.id === newItemId
+            ? {
+                ...item,
+                status: "error",
+                translation: "翻译请求失败，请检查网络或后端接口。",
+              }
+            : item
+        )
+      );
+    }
+  };
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -98,7 +192,7 @@ export default function LiveTranslationPage() {
         setInterimText(currentInterim);
 
         if (finalTranscript.trim() !== "") {
-          handleFinalSpeech(finalTranscript.trim());
+          void handleFinalSpeech(finalTranscript.trim());
         }
       };
 
@@ -131,7 +225,7 @@ export default function LiveTranslationPage() {
         }
       };
     }
-    
+
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.abort();
@@ -152,64 +246,6 @@ export default function LiveTranslationPage() {
     }
   }, [language, isRecording]);
 
-  const handleFinalSpeech = async (text: string) => {
-    const newItemId = Date.now().toString() + Math.random().toString(36).substring(7);
-    
-    setTranscripts(prev => [
-      ...prev,
-      { id: newItemId, originalText: text, status: "sending" }
-    ]);
-
-    try {
-      const formData = new FormData();
-      formData.append("mode", "live");
-      formData.append("text", text);
-
-      const response = await fetch("/api/translate", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error("API Request Failed");
-      }
-
-      const data = await response.json();
-      
-      setTranscripts(prev => prev.map(item => 
-        item.id === newItemId 
-          ? { ...item, translation: data.translation, status: "success" } 
-          : item
-      ));
-    } catch (error) {
-      console.error("Translation error:", error);
-      setTranscripts(prev => prev.map(item => 
-        item.id === newItemId 
-          ? { ...item, status: "error", translation: "翻译请求失败，请检查网络或后端接口。" } 
-          : item
-      ));
-    }
-  };
-
-  const startRecording = () => {
-    if (!recognitionRef.current) return;
-    setErrorMessage(null);
-    isIntentionalStopRef.current = false;
-    try {
-      recognitionRef.current.start();
-    } catch (e) {
-      console.error("Start error", e);
-    }
-  };
-
-  const stopRecording = () => {
-    if (!recognitionRef.current) return;
-    isIntentionalStopRef.current = true;
-    recognitionRef.current.stop();
-    setIsRecording(false);
-    setInterimText("");
-  };
-
   const toggleRecording = () => {
     if (isRecording) {
       stopRecording();
@@ -227,40 +263,73 @@ export default function LiveTranslationPage() {
       <Header />
 
       <main className="flex-1 flex flex-col max-w-5xl mx-auto w-full p-4 md:p-8 h-[calc(100vh-80px)] animate-fade-in-up">
-        
+
         {/* Top Controls Area */}
         <div className="bg-card-bg/80 backdrop-blur-xl border border-card-border shadow-md rounded-3xl p-6 mb-6 flex flex-col md:flex-row items-center justify-between gap-6 z-10 transition-all animate-fade-in-up-delay-1">
-          
+
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-primary flex items-center justify-center text-white shadow-lg shadow-primary/20">
               <Mic size={24} />
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-foreground">同传原声字幕区</h1>
-              <p className="text-sm text-text-muted mt-1">实时捕获语音并进行专业级翻译解析</p>
+              <p className="text-sm text-text-muted mt-1">
+                {outputMode === "transcript"
+                  ? "默认极速字幕模式：只做原文实时转写，不调用 AI 翻译"
+                  : "AI 翻译模式：识别后继续请求模型翻成中文，速度会更慢"}
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 bg-background/50 border border-card-border px-4 py-2 rounded-xl">
-              <Globe size={18} className="text-text-muted" />
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-                disabled={isRecording}
-                className="bg-transparent text-sm font-medium text-foreground outline-none cursor-pointer disabled:opacity-50"
-              >
-                <option value="fr-FR">法语 (Français)</option>
-                <option value="en-US">英语 (English)</option>
-              </select>
+          <div className="flex flex-col items-stretch gap-3 md:items-end">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 bg-background/50 border border-card-border px-4 py-2 rounded-xl">
+                <Globe size={18} className="text-text-muted" />
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  disabled={isRecording}
+                  className="bg-transparent text-sm font-medium text-foreground outline-none cursor-pointer disabled:opacity-50"
+                >
+                  <option value="fr-FR">法语 (Français)</option>
+                  <option value="en-US">英语 (English)</option>
+                </select>
+              </div>
+
+              <div className="inline-flex items-center gap-1 rounded-2xl border border-card-border bg-background/70 p-1 shadow-sm">
+                <button
+                  onClick={() => setOutputMode("transcript")}
+                  disabled={isRecording}
+                  className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                    outputMode === "transcript"
+                      ? "bg-emerald-500 text-white shadow-sm"
+                      : "text-text-muted hover:text-foreground"
+                  }`}
+                >
+                  <Mic size={15} />
+                  极速字幕
+                </button>
+                <button
+                  onClick={() => setOutputMode("ai")}
+                  disabled={isRecording}
+                  className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-all disabled:opacity-50 ${
+                    outputMode === "ai"
+                      ? "bg-slate-900 text-white shadow-sm"
+                      : "text-text-muted hover:text-foreground"
+                  }`}
+                >
+                  <Sparkles size={15} />
+                  AI 翻译
+                </button>
+              </div>
             </div>
 
             <button
               onClick={toggleRecording}
               disabled={!isSupported}
               className={`relative flex items-center justify-center gap-3 px-8 py-4 rounded-full font-bold text-white transition-all transform active:scale-95 shadow-xl ${
-                isRecording 
-                  ? "bg-red-500 hover:bg-red-600 shadow-red-500/30" 
+                isRecording
+                  ? "bg-red-500 hover:bg-red-600 shadow-red-500/30"
                   : "bg-primary hover:bg-primary-dark shadow-primary/30"
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
@@ -273,11 +342,23 @@ export default function LiveTranslationPage() {
               ) : (
                 <>
                   <Mic size={20} />
-                  开始收音
+                  {outputMode === "transcript" ? "开始极速字幕" : "开始 AI 翻译"}
                 </>
               )}
             </button>
           </div>
+        </div>
+
+        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/85 px-5 py-4 text-sm leading-7 text-amber-900 shadow-sm animate-fade-in-up">
+          <p className="font-semibold">当前随堂同传的两个关键限制</p>
+          <p className="mt-1">
+            1. 浏览器原生语音识别只吃麦克风环境声，不能直接抓取你手机里正在播放的音频流，所以手机外放离麦太远、声音太小或环境噪声太大时，确实可能收不进去。
+          </p>
+          <p className="mt-1">
+            2. AI 翻译模式会在每段识别完成后再请求一次模型，所以天然比“只出原文字幕”慢。比赛演示建议优先用
+            <span className="mx-1 rounded-full bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-700">极速字幕</span>
+            ，如果需要中文，再切回 AI 翻译。
+          </p>
         </div>
 
         {/* Error Message */}
@@ -290,12 +371,18 @@ export default function LiveTranslationPage() {
 
         {/* Subtitle Scrolling Area */}
         <div className="flex-1 bg-card-bg/60 backdrop-blur-md border border-card-border rounded-3xl p-6 md:p-8 overflow-y-auto flex flex-col gap-6 shadow-inner relative animate-fade-in-up-delay-2">
-          
+
           {transcripts.length === 0 && !interimText && !isRecording && (
             <div className="flex-1 flex flex-col items-center justify-center text-text-muted/60 absolute inset-0">
               <Mic size={48} className="mb-4 opacity-50" />
-              <p className="text-lg font-medium">点击上方按钮开始实时翻译</p>
-              <p className="text-sm mt-2">支持法语与英语的同声传译</p>
+              <p className="text-lg font-medium">
+                {outputMode === "transcript" ? "点击上方按钮开始极速字幕" : "点击上方按钮开始 AI 翻译"}
+              </p>
+              <p className="text-sm mt-2">
+                {outputMode === "transcript"
+                  ? "先稳定收音，再快速输出原文字幕"
+                  : "支持法语与英语识别后翻译成中文"}
+              </p>
             </div>
           )}
 
@@ -304,25 +391,34 @@ export default function LiveTranslationPage() {
               <p className="text-lg md:text-xl font-medium text-foreground/90 leading-relaxed mb-3">
                 {item.originalText}
               </p>
-              
-              <div className="h-px w-full bg-gradient-to-r from-transparent via-card-border to-transparent my-3 opacity-50"></div>
-              
-              <div className="text-base md:text-lg text-primary-dark font-medium leading-relaxed flex items-center gap-3">
-                {item.status === 'sending' && (
-                   <span className="flex items-center gap-2 text-sm text-primary">
-                     <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" /></svg>
-                     AI 翻译中...
-                   </span>
-                )}
-                {item.status === 'error' && (
-                  <span className="text-red-500 text-sm flex items-center gap-2">
-                    <AlertCircle size={16} /> {item.translation}
-                  </span>
-                )}
-                {item.status === 'success' && (
-                  <span className="text-foreground animate-fade-in">{item.translation}</span>
-                )}
-              </div>
+
+              {item.outputMode === "ai" ? (
+                <>
+                  <div className="h-px w-full bg-gradient-to-r from-transparent via-card-border to-transparent my-3 opacity-50"></div>
+
+                  <div className="text-base md:text-lg text-primary-dark font-medium leading-relaxed flex items-center gap-3">
+                    {item.status === "sending" && (
+                      <span className="flex items-center gap-2 text-sm text-primary">
+                        <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" /></svg>
+                        AI 翻译中...
+                      </span>
+                    )}
+                    {item.status === "error" && (
+                      <span className="text-red-500 text-sm flex items-center gap-2">
+                        <AlertCircle size={16} /> {item.translation}
+                      </span>
+                    )}
+                    {item.status === "success" && (
+                      <span className="text-foreground animate-fade-in">{item.translation}</span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">
+                  <Mic size={14} />
+                  极速字幕已直出原文，未调用 AI
+                </div>
+              )}
             </div>
           ))}
 
