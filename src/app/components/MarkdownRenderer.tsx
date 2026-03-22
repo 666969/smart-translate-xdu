@@ -273,6 +273,7 @@ function normalizeLatexContent(content: string) {
 
   const normalized = content
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/\\\$/g, "$")
     .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
     .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
     .replace(/([^\n]+)\$\$([^$\n]+?)\$\$/gu, (match, prefix: string, inner: string) => {

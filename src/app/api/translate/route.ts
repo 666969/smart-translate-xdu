@@ -635,7 +635,9 @@ function closeDanglingInlineMath(text: string) {
 }
 
 function repairLatexArtifacts(text: string) {
-  const segments = closeDanglingInlineMath(text).split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g);
+  const segments = closeDanglingInlineMath(text.replace(/\\\$/g, "$")).split(
+    /(\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g
+  );
 
   return segments
     .map((segment) => {
