@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CircleHelp } from "lucide-react";
+import { CircleHelp, Menu, X } from "lucide-react";
 import AuthControls from "./auth/AuthControls";
 
 // Logo Icon extracted from page.tsx
@@ -41,6 +41,15 @@ export function LogoIcon() {
 export default function Header() {
   const pathname = usePathname();
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const navLinks = [
+    { name: "教材翻译", path: "/" },
+    { name: "专业名词库", path: "/glossary" },
+    { name: "随堂同传", path: "/live" },
+    { name: "笔记本", path: "/notebook" },
+    { name: "文献精读", path: "/pdf" },
+  ];
 
   return (
     <>
@@ -62,46 +71,17 @@ export default function Header() {
 
             {/* Right Nav */}
             <div className="hidden md:flex items-center gap-6 text-sm font-medium">
-              <Link
-                href="/"
-                className={`transition-colors duration-200 ${
-                  pathname === "/" ? "text-primary font-semibold" : "text-text-muted hover:text-primary"
-                }`}
-              >
-                教材翻译
-              </Link>
-              <Link
-                href="/glossary"
-                className={`transition-colors duration-200 ${
-                  pathname === "/glossary" ? "text-primary font-semibold" : "text-text-muted hover:text-primary"
-                }`}
-              >
-                专业名词库
-              </Link>
-              <Link
-                href="/live"
-                className={`transition-colors duration-200 ${
-                  pathname === "/live" ? "text-primary font-semibold" : "text-text-muted hover:text-primary"
-                }`}
-              >
-                随堂同传
-              </Link>
-              <Link
-                href="/notebook"
-                className={`transition-colors duration-200 ${
-                  pathname === "/notebook" ? "text-primary font-semibold" : "text-text-muted hover:text-primary"
-                }`}
-              >
-                笔记本
-              </Link>
-              <Link
-                href="/pdf"
-                className={`transition-colors duration-200 ${
-                  pathname === "/pdf" ? "text-primary font-semibold" : "text-text-muted hover:text-primary"
-                }`}
-              >
-                文献精读
-              </Link>
+              {navLinks.map((link) => (
+                <Link
+                  key={link.path}
+                  href={link.path}
+                  className={`transition-colors duration-200 ${
+                    pathname === link.path ? "text-primary font-semibold" : "text-text-muted hover:text-primary"
+                  }`}
+                >
+                  {link.name}
+                </Link>
+              ))}
               <button
                 onClick={() => setIsHelpOpen(true)}
                 className="text-text-muted hover:text-primary transition-colors duration-200"
@@ -121,8 +101,35 @@ export default function Header() {
                 <CircleHelp size={18} />
               </button>
               <AuthControls compact />
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-card-border/70 bg-white/80 text-text-muted shadow-sm transition-all duration-300 hover:text-primary"
+                aria-label="Toggle menu"
+              >
+                {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+              </button>
             </div>
           </div>
+
+          {/* Mobile Menu Dropdown */}
+          {isMobileMenuOpen && (
+            <div className="md:hidden py-4 border-t border-card-border/50 animate-fade-in flex flex-col gap-2">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.path}
+                  href={link.path}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`px-4 py-3 rounded-xl transition-colors text-sm font-medium ${
+                    pathname === link.path
+                      ? "bg-primary/10 text-primary"
+                      : "text-text-muted hover:bg-slate-50 hover:text-primary"
+                  }`}
+                >
+                  {link.name}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </nav>
 
