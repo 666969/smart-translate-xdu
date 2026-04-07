@@ -126,14 +126,14 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-md animate-fade-in"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-md animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,249,255,0.94))] shadow-[0_40px_120px_-40px_rgba(30,58,95,0.45)] animate-zoom-in"
+        className="w-full max-w-md flex flex-col max-h-[85vh] rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,249,255,0.94))] shadow-[0_40px_120px_-40px_rgba(30,58,95,0.45)] animate-zoom-in overflow-hidden"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="relative overflow-hidden border-b border-slate-200/80 bg-[radial-gradient(circle_at_top,rgba(96,165,250,0.18),transparent_55%),linear-gradient(135deg,rgba(30,58,95,0.98),rgba(37,99,235,0.94),rgba(6,182,212,0.84))] px-6 py-6 text-white">
+        <div className="relative shrink-0 border-b border-slate-200/80 bg-[radial-gradient(circle_at_top,rgba(96,165,250,0.18),transparent_55%),linear-gradient(135deg,rgba(30,58,95,0.98),rgba(37,99,235,0.94),rgba(6,182,212,0.84))] px-6 py-6 text-white">
           <div className="absolute inset-0 opacity-30 shimmer" />
           <div className="relative flex items-start justify-between">
             <div>
@@ -156,8 +156,8 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
           </div>
         </div>
 
-        <div className="space-y-5 px-6 py-6">
-          <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-slate-100/90 p-1 shadow-inner">
+        <div className="space-y-4 px-6 py-6 overflow-y-auto">
+          <div className="inline-flex w-full shrink-0 rounded-2xl border border-slate-200 bg-slate-100/90 p-1 shadow-inner">
             <button
               onClick={() => setMode("signIn")}
               className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-300 ${
@@ -251,10 +251,10 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
             <button
               type="submit"
               disabled={submitting || !isConfigured}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,var(--primary-dark),var(--primary),var(--accent))] px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(37,99,235,0.65)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_50px_-18px_rgba(37,99,235,0.75)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+              className="inline-flex flex-row whitespace-nowrap w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,var(--primary-dark),var(--primary),var(--accent))] px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_-18px_rgba(37,99,235,0.65)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_50px_-18px_rgba(37,99,235,0.75)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
             >
-              {submitting ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {modeLabel.action}
+              {submitting ? <Loader2 size={16} className="animate-spin shrink-0" /> : <Sparkles size={16} className="shrink-0" />}
+              <span>{modeLabel.action}</span>
             </button>
           </form>
 
