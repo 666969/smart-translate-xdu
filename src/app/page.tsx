@@ -687,10 +687,10 @@ export default function Home() {
                           alt="片段预览"
                           className="w-full h-full object-contain bg-white"
                         />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-all duration-200 flex items-center justify-center">
+                        <div className="absolute top-3 right-3 flex items-center justify-center z-10">
                           <button
                             onClick={handleRemoveSnippetImage}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-9 h-9 rounded-full bg-white/90 text-red-500 flex items-center justify-center hover:bg-white shadow-lg"
+                            className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm text-red-500 flex items-center justify-center hover:bg-white shadow-md border border-red-500/10 transition-transform hover:scale-105"
                           >
                             <CloseIcon />
                           </button>
@@ -713,10 +713,10 @@ export default function Home() {
                             alt={`课件预览 ${idx + 1}`}
                             className="w-full h-32 md:h-48 object-contain bg-background/20"
                           />
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all duration-200 flex items-center justify-center">
+                          <div className="absolute top-2 right-2 flex items-center justify-center z-10">
                             <button
                               onClick={() => handleRemoveDocumentImage(idx)}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-8 h-8 rounded-full bg-white/90 text-red-500 flex items-center justify-center hover:bg-white shadow-lg"
+                              className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm text-red-500 flex items-center justify-center hover:bg-white shadow-md border border-red-500/10 transition-transform hover:scale-105"
                             >
                               <CloseIcon />
                             </button>

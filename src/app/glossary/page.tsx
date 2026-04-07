@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { glossaryData, GlossaryWord } from "@/data/glossaryData";
-import { Search, Book, BookOpen, Hash, Languages } from "lucide-react";
+import { Search, Book, BookOpen, Hash, Languages, Menu, X } from "lucide-react";
 import Header from "../components/Header";
 import SpeakButton from "../components/SpeakButton";
 
@@ -13,6 +13,7 @@ export default function GlossaryDashboard() {
   const [activeModuleIdx, setActiveModuleIdx] = useState(-1); // -1 means All
   const [searchQuery, setSearchQuery] = useState("");
   const [langMode, setLangMode] = useState<LangMode>("all");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const activeBook = glossaryData[activeBookIdx];
   const modules = useMemo(() => activeBook?.modules || [], [activeBook]);
@@ -50,11 +51,28 @@ export default function GlossaryDashboard() {
     <div className="flex flex-col h-screen w-full bg-slate-50 text-slate-800 font-sans overflow-hidden">
       <Header />
       <div className="flex flex-1 overflow-hidden animate-fade-in-up">
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden transition-opacity"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 shadow-sm z-10 animate-fade-in-up-delay-1">
-        <div className="h-16 flex items-center px-6 border-b border-slate-100">
-          <Languages className="w-6 h-6 text-blue-600 mr-3" />
-          <h1 className="text-xl font-bold text-slate-800 tracking-tight">智译西电 | 词汇库</h1>
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 shadow-2xl transition-transform duration-300 ease-in-out
+        md:relative md:shadow-sm md:translate-x-0 md:z-10 animate-fade-in-up-delay-1
+        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
+      `}>
+        <div className="h-16 flex items-center justify-between md:justify-start px-6 border-b border-slate-100 flex-shrink-0">
+          <div className="flex items-center">
+            <Languages className="w-6 h-6 text-blue-600 mr-3" />
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">智译西电 | 词汇库</h1>
+          </div>
+          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
         </div>
         
         <div className="p-4 flex-1 overflow-y-auto">
@@ -94,13 +112,19 @@ export default function GlossaryDashboard() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50 animate-fade-in-up-delay-2">
         {/* Header: Search & Mode Switcher */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 flex-shrink-0">
-          <div className="flex items-center gap-6 w-full max-w-3xl">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 flex-shrink-0">
+          <div className="flex items-center gap-3 md:gap-6 w-full max-w-3xl">
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden p-2 -ml-2 text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-50"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
             <div className="relative w-full max-w-md">
               <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="搜索词汇 (中 / 法 / 英)..."
+                placeholder="搜索中/法/英..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 bg-slate-100/50 border border-slate-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-slate-400"
@@ -143,7 +167,7 @@ export default function GlossaryDashboard() {
 
         {/* Module Tabs */}
         <div className="bg-white border-b border-slate-200 shadow-sm flex-shrink-0">
-          <div className="flex overflow-x-auto hide-scrollbar p-2 px-8 items-center space-x-2">
+          <div className="flex overflow-x-auto hide-scrollbar p-2 px-4 md:px-8 items-center space-x-2">
             <button
               onClick={() => setActiveModuleIdx(-1)}
               className={`whitespace-nowrap px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -172,7 +196,7 @@ export default function GlossaryDashboard() {
         </div>
 
         {/* Word Cards Grid */}
-        <div className="flex-1 overflow-y-auto p-8 relative">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
           {filteredWords.length === 0 ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
               <BookOpen className="w-16 h-16 mb-4 opacity-20" />
@@ -180,7 +204,7 @@ export default function GlossaryDashboard() {
               <p className="text-sm mt-1">请尝试更换搜索关键词或选择“全部模块”</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 3xl:grid-cols-4 gap-6 content-start">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 3xl:grid-cols-4 gap-4 md:gap-6 content-start">
               {filteredWords.map((item, i) => (
                 <div 
                   key={i}
@@ -203,7 +227,7 @@ export default function GlossaryDashboard() {
                         <div className="flex items-center mb-1.5">
                           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-1.5 py-0.5 rounded">Français</span>
                         </div>
-                        <p className="text-xl font-bold text-blue-900 leading-tight group-hover:text-blue-700 transition-colors flex items-center gap-2">
+                        <p className="text-lg md:text-xl font-bold text-blue-900 leading-tight group-hover:text-blue-700 transition-colors flex items-center gap-2">
                           {item.word.term_fr}
                           <SpeakButton text={item.word.term_fr} lang="fr-FR" size={16} />
                         </p>
@@ -221,7 +245,7 @@ export default function GlossaryDashboard() {
                         <div className="flex items-center mb-1.5">
                           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-1.5 py-0.5 rounded">English</span>
                         </div>
-                        <p className="text-lg font-semibold text-slate-700 leading-snug">
+                        <p className="text-base md:text-lg font-semibold text-slate-700 leading-snug">
                           {item.word.term_en}
                         </p>
                       </div>
@@ -235,7 +259,7 @@ export default function GlossaryDashboard() {
                       <div className="flex items-center mb-1.5">
                         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-1.5 py-0.5 rounded">中文</span>
                       </div>
-                      <p className="text-[15px] font-medium text-slate-800 leading-snug py-1.5 px-3 bg-gradient-to-r from-amber-50 to-orange-50/30 rounded-lg inline-block border border-amber-100/50 shadow-sm">
+                      <p className="text-sm md:text-[15px] font-medium text-slate-800 leading-snug py-1.5 px-3 bg-gradient-to-r from-amber-50 to-orange-50/30 rounded-lg inline-block border border-amber-100/50 shadow-sm">
                         {item.word.term_zh}
                       </p>
                     </div>
