@@ -1,19 +1,21 @@
 import type { Metadata } from "next";
-import { Inter, Noto_Sans_SC } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { AppSessionProvider } from "./components/AppSessionProvider";
 import { AuthProvider } from "./components/auth/AuthProvider";
 
-const inter = Inter({
-  subsets: ["latin"],
+const inter = localFont({
+  src: "../../src/fonts/Inter.woff2",
   variable: "--font-inter",
   display: "swap",
+  weight: "100 900",
 });
 
-const notoSansSc = Noto_Sans_SC({
-  subsets: ["latin"],
+const notoSansSc = localFont({
+  src: "../../src/fonts/NotoSansSC-Regular.ttf",
   variable: "--font-noto-sans-sc",
   display: "swap",
+  weight: "400",
 });
 
 export const metadata: Metadata = {

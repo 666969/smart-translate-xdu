@@ -36,6 +36,102 @@ const openai = new OpenAI({
   baseURL: process.env.OPENAI_BASE_URL || undefined,
 });
 
+const LATEX_COMMAND_PATTERN =
+  /\\(?:frac|int|lim|sum|sqrt|sin|cos|tan|ln|log|pi|nu|forall|exists|infty|alpha|beta|gamma|theta|phi|omega|mathbb|mathrm|mathcal|operatorname|cdot|times|leq|geq|neq|to|rightarrow|left|right)\b/u;
+
+function countUnescapedDollarSigns(text: string) {
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "$" && text[i - 1] !== "\\") count++;
+  }
+  return count;
+}
+
+function repairFormulaBody(candidate: string) {
+  return candidate
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/\\{2,}(?=[A-Za-z])/gu, "\\")
+    .replace(/\\+\$/gu, "$")
+    .replace(/\$\$/g, "")
+    .replace(/^[$\s]+|[$\s]+$/g, "")
+    .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
+    .replace(/\$(?=\})/gu, "")
+    .replace(/∀/g, "\\forall ")
+    .replace(/∃/g, "\\exists ")
+    .replace(/∈/g, "\\in ")
+    .replace(/ℝ/g, "\\mathbb{R}")
+    .replace(/(^|[^\\])frac(?=\s*\{)/gu, "$1\\frac")
+    .replace(/(^|[^\\])int(?=\s*[_{])/gu, "$1\\int")
+    .replace(/(^|[^\\])sum(?=\s*[_{])/gu, "$1\\sum")
+    .replace(/(^|[^\\])sqrt(?=\s*[\\[{])/gu, "$1\\sqrt")
+    .replace(/(^|[\\s(,])sin(?=\s*[\\[(\\\\])/gu, "$1\\sin")
+    .replace(/(^|[\\s(,])cos(?=\s*[\\[(\\\\])/gu, "$1\\cos")
+    .replace(/(^|[\\s(,])tan(?=\s*[\\[(\\\\])/gu, "$1\\tan")
+    .replace(/(^|[\\s(,])ln(?=\s*[\\[(\\\\])/gu, "$1\\ln")
+    .replace(/(^|[\\s(,])log(?=\s*[\\[(\\\\])/gu, "$1\\log")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function looksLikeInlineFormula(candidate: string) {
+  const trimmed = repairFormulaBody(candidate);
+  if (!trimmed || /[\u4e00-\u9fff]/u.test(trimmed)) return false;
+  return (
+    LATEX_COMMAND_PATTERN.test(trimmed) ||
+    /[=^_{}|]/u.test(trimmed) ||
+    /[∀∃∈ℝα-ωΑ-Ω∫∑∞≈≠≤≥±]/u.test(trimmed) ||
+    /\b[A-Za-z]\w*\([^)\n]+\)/u.test(trimmed)
+  );
+}
+
+function sanitizeChatReplyMath(text: string) {
+  const normalized = text
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/\\\[([\s\S]*?)\\\]/g, "$$$$ $1 $$$$")
+    .replace(/\\\(([\s\S]*?)\\\)/g, "$$$1$$")
+    .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
+    .replace(/\$(?=\})/gu, "")
+    .replace(/([^\n]+)\$\$([^$\n]+?)\$\$/gu, (match, prefix: string, inner: string) => {
+      if (!prefix.trim() || prefix.trim().endsWith("$")) return match;
+      return `${prefix}$${inner.trim()}$`;
+    })
+    .replace(/\$([^$\n]+)\$\$/g, (_: string, inner: string) => `$${inner.trim()}$`)
+    .replace(/\$\$([^$\n]+)\$/g, (_: string, inner: string) => `$${inner.trim()}$`)
+    .replace(
+      /([：:]\s*)\$\$?([^$\n]+?)(?=(?:\n|$))/gu,
+      (_: string, prefix: string, formula: string) => {
+        if (!looksLikeInlineFormula(formula)) return `${prefix}${formula}`;
+        return `${prefix}$${repairFormulaBody(formula)}$`;
+      }
+    )
+    .replace(
+      /([：:]\s*)((?:\\(?:int|frac|lim|sum|sqrt|sin|cos|tan|ln|log|alpha|beta|gamma|theta|phi|omega|mathbb)|[∀∃∈ℝα-ωΑ-Ω∫∑∞]).*)$/gmu,
+      (_: string, prefix: string, formula: string) => {
+        if (!looksLikeInlineFormula(formula)) return `${prefix}${formula}`;
+        return `${prefix}$${repairFormulaBody(formula)}$`;
+      }
+    );
+
+  return normalized
+    .split(/\r?\n/)
+    .map((line) => {
+      if (!line.trim()) return line;
+      const cleaned = line
+        .replace(/\$\$\s*$/, "")
+        .replace(/\$\s*$/, "")
+        .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
+        .replace(/\$(?=\})/gu, "");
+      if (countUnescapedDollarSigns(cleaned) % 2 === 1) {
+        return cleaned.replace(/(?<!\\)\$([^$\n]+)$/u, (match, candidate: string) => {
+          if (!looksLikeInlineFormula(candidate)) return match;
+          return `$${repairFormulaBody(candidate)}$`;
+        });
+      }
+      return cleaned;
+    })
+    .join("\n");
+}
+
 const CHAT_FLASH_MODEL =
   process.env.OPENAI_MODEL_FLASH ||
   process.env.OPENAI_MODEL ||
@@ -125,7 +221,7 @@ export async function POST(request: NextRequest) {
       `[Chat] 回复完成 — Token 用量: ${completion.usage?.total_tokens || "未知"}`
     );
 
-    return NextResponse.json({ reply });
+    return NextResponse.json({ reply: sanitizeChatReplyMath(reply) });
   } catch (error) {
     console.error("[Chat] 对话请求失败:", error);
 

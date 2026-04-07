@@ -41,7 +41,7 @@ function getAuthErrorMessage(error: unknown) {
 }
 
 export default function AuthModal({ open, onClose }: AuthModalProps) {
-  const { signIn, signUp, isConfigured } = useAuth();
+  const { signIn, signUp, signInWithGoogle, isConfigured } = useAuth();
   const [mode, setMode] = useState<AuthMode>("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -102,6 +102,20 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       } else {
         await signUp(email.trim(), password);
       }
+      onClose();
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGoogleSubmit = async () => {
+    setSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      await signInWithGoogle();
       onClose();
     } catch (error) {
       setErrorMessage(getAuthErrorMessage(error));
@@ -171,6 +185,28 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
               Firebase 环境变量尚未配置。补全 `NEXT_PUBLIC_FIREBASE_*` 后即可启用登录。
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={handleGoogleSubmit}
+            disabled={submitting || !isConfigured}
+            className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+          >
+            {submitting ? (
+              <Loader2 size={16} className="animate-spin text-primary" />
+            ) : (
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-bold text-primary">
+                G
+              </span>
+            )}
+            使用 Google 登录
+          </button>
+
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span>或使用邮箱</span>
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
 
           <form className="space-y-4" onSubmit={handleEmailSubmit}>
             <label className="block">

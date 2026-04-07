@@ -23,6 +23,9 @@ interface ChatMessage {
   content: string;
 }
 
+const DEMO_SNIPPET_TEXT =
+  "Le système linéaire étudié est caractérisé par sa fonction de transfert H(p). Pour analyser sa stabilité, on observe les pôles du dénominateur et la réponse impulsionnelle du circuit.";
+
 function getTranslateTimeoutMs(options: {
   mode: "snippet" | "document";
   hasSnippetImage: boolean;
@@ -258,9 +261,22 @@ export default function Home() {
   } = home;
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingElapsed, setLoadingElapsed] = useState(0);
   const snippetFileInputRef = useRef<HTMLInputElement>(null);
   const documentFileInputRef = useRef<HTMLInputElement>(null);
   const chatBodyRef = useRef<HTMLDivElement>(null);
+
+  // 翻译等待计时器
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingElapsed(0);
+      return;
+    }
+    const timer = setInterval(() => {
+      setLoadingElapsed((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isLoading]);
 
   // 聊天窗自动滚动到底部
   useEffect(() => {
@@ -280,6 +296,11 @@ export default function Home() {
 
   const openDocumentUpload = () => {
     documentFileInputRef.current?.click();
+  };
+
+  const fillDemoSnippetText = () => {
+    setSnippetText(DEMO_SNIPPET_TEXT);
+    setErrorMessage(null);
   };
 
   const handleSnippetFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -640,13 +661,24 @@ export default function Home() {
                 {mode === "snippet" ? (
                   <div className="flex-1 flex flex-col">
                     {!snippetPreviewUrl ? (
-                      <textarea
-                        id="input-textarea"
-                        value={snippetText}
-                        onChange={(e) => setSnippetText(e.target.value)}
-                        placeholder="在此粘贴外文内容...&#10;例如：Le théorème de Gauss établit que le flux du champ électrique..."
-                        className="h-[88px] w-full resize-none rounded-2xl border border-card-border bg-white/80 px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-text-light/70 focus:border-primary-light transition-all duration-300"
-                      />
+                      <div className="flex flex-col gap-2">
+                        <textarea
+                          id="input-textarea"
+                          value={snippetText}
+                          onChange={(e) => setSnippetText(e.target.value)}
+                          placeholder="在此粘贴外文内容...&#10;例如：Le théorème de Gauss établit que le flux du champ électrique..."
+                          className="h-[108px] w-full resize-none rounded-2xl border border-card-border bg-white/80 px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-text-light/70 focus:border-primary-light transition-all duration-300"
+                        />
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={fillDemoSnippetText}
+                            className="rounded-full border border-primary/15 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-all hover:-translate-y-0.5 hover:bg-primary/10"
+                          >
+                            填入演示文本
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <div className="relative group flex-1 min-h-[300px] rounded-[28px] border border-card-border overflow-hidden bg-gradient-to-br from-slate-50 to-white">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -730,7 +762,7 @@ export default function Home() {
                           <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
                             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" />
                           </svg>
-                          解析中...
+                          解析中... {loadingElapsed}s
                         </>
                       ) : (
                         <>
@@ -770,9 +802,9 @@ export default function Home() {
                           <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="15 45" strokeLinecap="round" />
                         </svg>
                       </div>
-                      <p className="text-sm animate-pulse">正在提取关键词...</p>
+                      <p className="text-sm animate-pulse">正在提取关键词... {loadingElapsed}s</p>
                       <span className="text-xs text-text-light">
-                        当前：{deepMode ? "深度模式" : "极速模式"}
+                        当前：{deepMode ? "深度模式" : "极速模式"} · {deepMode ? "深度模式通常 20-60 秒" : "极速模式通常 10-30 秒"}
                       </span>
                     </div>
                   ) : keywordItemsResult.length > 0 || keywordsResult ? (
@@ -857,9 +889,9 @@ export default function Home() {
                             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="15 45" strokeLinecap="round" />
                           </svg>
                         </div>
-                        <p className="text-sm animate-pulse">正在整理精准译文与公式...</p>
+                        <p className="text-sm animate-pulse">正在整理精准译文与公式... {loadingElapsed}s</p>
                         <span className="text-xs text-text-light">
-                          当前：{deepMode ? "深度模式" : "极速模式"}
+                          当前：{deepMode ? "深度模式" : "极速模式"} · {snippetFile ? "图片模式通常 30-60 秒" : "极速模式通常 10-30 秒"}
                         </span>
                       </div>
                     ) : translationResult ? (
@@ -926,9 +958,9 @@ export default function Home() {
                             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="15 45" strokeLinecap="round" />
                           </svg>
                         </div>
-                        <p className="text-sm animate-pulse">AI 正在补充原理与上下文...</p>
+                        <p className="text-sm animate-pulse">AI 正在补充原理与上下文... {loadingElapsed}s</p>
                         <span className="text-xs text-text-light">
-                          当前：{deepMode ? "深度模式" : "极速模式"}
+                          当前：{deepMode ? "深度模式" : "极速模式"} · {deepMode ? "深度模式通常 20-60 秒" : "极速模式通常 10-30 秒"}
                         </span>
                       </div>
                     ) : analysisResult ? (
@@ -973,9 +1005,18 @@ export default function Home() {
                     <h2 className="text-base font-semibold text-foreground">解析结果</h2>
                   </div>
                   {(mermaidData || (quizData && quizData.length > 0)) && !isLoading && (
-                    <span className="text-xs text-primary font-medium bg-primary/10 px-2 py-1 rounded-md">
-                      渲染完成
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <Suspense fallback={null}>
+                        <ExportButton
+                          mermaid={mermaidData}
+                          quiz={quizData}
+                          mode={mode}
+                        />
+                      </Suspense>
+                      <span className="text-xs text-primary font-medium bg-primary/10 px-2 py-1 rounded-md">
+                        渲染完成
+                      </span>
+                    </div>
                   )}
                 </div>
 
@@ -990,7 +1031,8 @@ export default function Home() {
                           <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="15 45" strokeLinecap="round" />
                         </svg>
                       </div>
-                      <p className="text-sm animate-pulse">AI 正在深度分析中...</p>
+                      <p className="text-sm animate-pulse">AI 正在深度分析中... {loadingElapsed}s</p>
+                      <span className="text-xs text-text-light">课件精读通常需要 30-90 秒</span>
                     </div>
                   ) : (
                     <div className="space-y-6">
@@ -1117,7 +1159,7 @@ export default function Home() {
                   </div>
                 )}
                 <div
-                  className={`rounded-xl px-3.5 py-2.5 text-sm max-w-[290px] overflow-x-auto ${
+                  className={`rounded-xl px-3.5 py-2.5 text-sm max-w-[400px] overflow-x-auto [&_.math-display]:overflow-x-auto [&_.math-display]:text-[13px] ${
                     msg.role === "user"
                       ? "bg-gradient-to-br from-primary to-primary-light text-white rounded-tr-sm"
                       : "bg-card-bg text-foreground border border-card-border shadow-sm rounded-tl-sm"

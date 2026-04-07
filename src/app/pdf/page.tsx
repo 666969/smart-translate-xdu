@@ -9,9 +9,14 @@ import {
   Loader2,
   X,
   BookOpen,
+  Download,
 } from "lucide-react";
 import Header from "../components/Header";
 import type { PdfExtractStatus } from "@/lib/pdfParser";
+import {
+  buildPdfStudyNoteMarkdown,
+  downloadMarkdownFile,
+} from "@/lib/markdownExport";
 import { useAppSession } from "../components/AppSessionProvider";
 
 const MarkdownRenderer = lazy(
@@ -462,6 +467,31 @@ export default function PdfPage() {
     pageCount
   );
   const canAskDocument = pdfExtractStatus === "text_ready" || scanFallbackMode;
+  const canExportPdfNotes = Boolean(
+    pdfFile && (summary || chatMessages.length > 0 || statusCard)
+  );
+
+  const handleExportPdfNotes = () => {
+    if (!pdfFile) {
+      return;
+    }
+
+    const content = buildPdfStudyNoteMarkdown({
+      fileName: pdfFile.name,
+      pageCount,
+      deepMode,
+      extractStatus: pdfExtractStatus,
+      extractReason: pdfExtractReason,
+      scanFallbackMode,
+      scanPageSelection,
+      lastResolvedPageLabel,
+      summary,
+      statusCard,
+      chatMessages,
+    });
+
+    downloadMarkdownFile("智译西电_文献精读", content);
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -475,7 +505,7 @@ export default function PdfPage() {
             </div>
             文献精读
           </h1>
-          <p className="text-sm text-text-muted mt-2 flex items-center gap-4">
+          <p className="text-sm text-text-muted mt-2 flex flex-wrap items-center gap-4">
             上传完整 PDF 课件，AI 自动生成全文摘要并支持对文献的任意追问。
             <span className="inline-flex items-center gap-1 rounded-full border border-card-border bg-background px-1 py-1 text-[11px] shadow-sm">
               <button
@@ -499,6 +529,15 @@ export default function PdfPage() {
                 深度
               </button>
             </span>
+            <button
+              type="button"
+              onClick={handleExportPdfNotes}
+              disabled={!canExportPdfNotes}
+              className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] font-medium text-violet-700 transition-all hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download size={14} />
+              导出笔记
+            </button>
           </p>
         </div>
 

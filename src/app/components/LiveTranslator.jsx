@@ -4,6 +4,7 @@ import { startTransition, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   BrainCircuit,
+  Download,
   Globe,
   Languages,
   Mic,
@@ -11,6 +12,10 @@ import {
   Sparkles,
   Square,
 } from "lucide-react";
+import {
+  buildLiveSessionMarkdown,
+  downloadMarkdownFile,
+} from "@/lib/markdownExport";
 import Header from "./Header";
 
 const FAST_TRANSLATION_RULES = {
@@ -536,6 +541,7 @@ export default function LiveTranslator() {
   const [tabInterimText, setTabInterimText] = useState("");
   const [tabErrorMessage, setTabErrorMessage] = useState(null);
   const [isTabTranscribing, setIsTabTranscribing] = useState(false);
+  const [showTabGuide, setShowTabGuide] = useState(false);
 
   const subtitleScrollRef = useRef(null);
   const subtitleBottomRef = useRef(null);
@@ -948,11 +954,16 @@ export default function LiveTranslator() {
       }
     } else {
       if (inputSource === "tab") {
-        void startTabListening();
+        setShowTabGuide(true);
       } else {
         startMicListening();
       }
     }
+  };
+
+  const handleTabGuideConfirm = () => {
+    setShowTabGuide(false);
+    void startTabListening();
   };
 
   const clearAll = () => {
@@ -975,10 +986,79 @@ export default function LiveTranslator() {
 
   const sentenceCount = bufferRef.current.sentences.length;
   const wordCount = bufferRef.current.wordCount;
+  const canExportLiveSession = subtitles.length > 0 || insights.length > 0;
+
+  const handleExportLiveSession = () => {
+    const content = buildLiveSessionMarkdown({
+      inputSource,
+      language,
+      isListening,
+      errorMessage,
+      subtitles,
+      insights,
+    });
+
+    downloadMarkdownFile("智译西电_同传记录", content);
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
+
+      {/* Tab Audio Guide Modal */}
+      {showTabGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="relative mx-4 w-full max-w-lg rounded-3xl border border-card-border bg-white p-6 shadow-2xl animate-fade-in-up">
+            <button
+              onClick={() => setShowTabGuide(false)}
+              className="absolute right-4 top-4 rounded-full p-1 text-text-muted hover:bg-slate-100 transition-colors"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
+
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">标签页音频共享操作指南</h3>
+                <p className="text-xs text-text-muted">请按以下步骤操作，否则可能无法捕获音频</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-start gap-4 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-white text-sm font-bold">1</span>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">选择“Chrome 标签页”</p>
+                  <p className="mt-1 text-xs text-text-muted leading-5">在弹窗顶部选择 <strong>“Chrome 标签页”</strong>（而不是“窗口”或“整个屏幕”），然后选择正在播放音频的标签页。</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white text-sm font-bold">2</span>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">✅ 勾选“共享标签页音频”</p>
+                  <p className="mt-1 text-xs text-text-muted leading-5">弹窗底部有一个 <strong>“共享标签页音频”</strong> 复选框，<span className="text-red-500 font-bold">必须勾选</span>，否则只会共享画面而没有声音。</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white text-sm font-bold">3</span>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">点击“共享”</p>
+                  <p className="mt-1 text-xs text-text-muted leading-5">点击确认后，系统将自动开始接收标签页音频并转写为双语字幕。</p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleTabGuideConfirm}
+              className="mt-6 w-full rounded-2xl bg-gradient-to-r from-primary-dark to-primary px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/25 transition-all hover:-translate-y-0.5 hover:shadow-primary/35"
+            >
+              我知道了，开始共享
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto flex min-h-[calc(100vh-64px)] w-full max-w-[1600px] flex-col px-4 py-6 lg:px-8">
         <section className="animate-fade-in-up rounded-[32px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,246,255,0.9))] p-5 shadow-[0_24px_80px_-28px_rgba(37,99,235,0.28)]">
@@ -1063,6 +1143,15 @@ export default function LiveTranslator() {
                     开始同传
                   </>
                 )}
+              </button>
+
+              <button
+                onClick={handleExportLiveSession}
+                disabled={!canExportLiveSession}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-card-border bg-white/85 px-5 py-3 text-sm font-medium text-text-muted shadow-sm transition-all hover:-translate-y-0.5 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Download size={15} />
+                导出记录
               </button>
 
               <button
