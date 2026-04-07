@@ -130,7 +130,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md flex flex-col max-h-[85vh] rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,249,255,0.94))] shadow-[0_40px_120px_-40px_rgba(30,58,95,0.45)] animate-zoom-in overflow-hidden"
+        className="w-full max-w-md flex flex-col max-h-[90dvh] md:max-h-[85vh] rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,249,255,0.94))] shadow-[0_40px_120px_-40px_rgba(30,58,95,0.45)] animate-zoom-in overflow-hidden"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="relative shrink-0 border-b border-slate-200/80 bg-[radial-gradient(circle_at_top,rgba(96,165,250,0.18),transparent_55%),linear-gradient(135deg,rgba(30,58,95,0.98),rgba(37,99,235,0.94),rgba(6,182,212,0.84))] px-6 py-6 text-white">
@@ -264,6 +264,13 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
             className="w-full text-center text-sm text-slate-500 transition-colors duration-300 hover:text-primary"
           >
             {modeLabel.switchText}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full md:hidden mt-2 text-center text-sm text-slate-400 transition-colors duration-300 hover:text-slate-600"
+          >
+            关闭弹窗界面
           </button>
         </div>
       </div>

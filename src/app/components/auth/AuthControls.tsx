@@ -65,7 +65,7 @@ export default function AuthControls({ compact = false }: AuthControlsProps) {
       <>
         <button
           onClick={() => setIsModalOpen(true)}
-          className={`inline-flex items-center justify-center gap-2 rounded-full border border-primary/10 bg-[linear-gradient(135deg,var(--primary-dark),var(--primary),var(--accent))] text-sm font-semibold text-white shadow-[0_16px_40px_-18px_rgba(37,99,235,0.55)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_48px_-18px_rgba(37,99,235,0.65)] active:translate-y-0 ${
+          className={`shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 rounded-full border border-primary/10 bg-[linear-gradient(135deg,var(--primary-dark),var(--primary),var(--accent))] text-sm font-semibold text-white shadow-[0_16px_40px_-18px_rgba(37,99,235,0.55)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_48px_-18px_rgba(37,99,235,0.65)] active:translate-y-0 ${
             compact ? "h-10 px-3.5" : "px-4 py-2"
           }`}
         >
