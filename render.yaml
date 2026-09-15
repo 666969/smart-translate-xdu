@@ -13,7 +13,17 @@ services:
         sync: false
       - key: OPENAI_BASE_URL
         sync: false
+      - key: OPENAI_MODEL
+        sync: false
       - key: OPENAI_MODEL_FLASH
         sync: false
       - key: OPENAI_MODEL_PRO
         sync: false
+      - key: OPENAI_TRANSCRIBE_API_KEY
+        sync: false
+      - key: OPENAI_TRANSCRIBE_BASE_URL
+        sync: false
+      - key: OPENAI_TRANSCRIBE_MODEL
+        sync: false
+      - key: OPENAI_TIMEOUT_MS
+        value: "180000"

@@ -2,14 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
 const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || "180000");
+const HAS_DEDICATED_TRANSCRIBE_API = Boolean(
+  process.env.OPENAI_TRANSCRIBE_API_KEY ||
+    process.env.OPENAI_TRANSCRIBE_BASE_URL
+);
+const TRANSCRIBE_API_KEY =
+  process.env.OPENAI_TRANSCRIBE_API_KEY || process.env.OPENAI_API_KEY;
+const TRANSCRIBE_BASE_URL = HAS_DEDICATED_TRANSCRIBE_API
+  ? process.env.OPENAI_TRANSCRIBE_BASE_URL || undefined
+  : process.env.OPENAI_BASE_URL || undefined;
 const TRANSCRIBE_MODEL =
   process.env.OPENAI_TRANSCRIBE_MODEL ||
   process.env.OPENAI_TRANSCRIPTION_MODEL ||
   "whisper-1";
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL || undefined,
+  apiKey: TRANSCRIBE_API_KEY || "transcription-api-key-not-configured",
+  baseURL: TRANSCRIBE_BASE_URL,
   timeout: OPENAI_TIMEOUT_MS,
 });
 
@@ -40,6 +49,20 @@ function getErrorMessage(error: unknown) {
 
 export async function POST(request: NextRequest) {
   try {
+    const usesDeepSeekTextApi = (process.env.OPENAI_BASE_URL || "").includes(
+      "api.deepseek.com"
+    );
+
+    if (usesDeepSeekTextApi && !HAS_DEDICATED_TRANSCRIBE_API) {
+      return NextResponse.json(
+        {
+          error:
+            "当前已使用 DeepSeek 文本接口；DeepSeek 暂不提供此功能所需的音频转写接口。请配置独立的语音转写服务后再试。",
+        },
+        { status: 503 }
+      );
+    }
+
     const formData = await request.formData();
     const audio = formData.get("audio");
     const language = normalizeLanguageCode(formData.get("language"));

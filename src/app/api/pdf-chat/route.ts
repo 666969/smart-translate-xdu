@@ -13,6 +13,18 @@ const openai = new OpenAI({
   timeout: OPENAI_TIMEOUT_MS,
 });
 
+function selectVisionCompatibleModel(preferredModel: string) {
+  const usesDeepSeek = (process.env.OPENAI_BASE_URL || "").includes(
+    "api.deepseek.com"
+  );
+
+  if (usesDeepSeek && preferredModel === "deepseek-v4-pro") {
+    return FLASH_MODEL;
+  }
+
+  return preferredModel;
+}
+
 const PDF_SYSTEM_PROMPT = `你是"智译西电"平台的理工科 PDF 文献解读助教。你会收到一篇完整的外语（法语/英语）课件或教材的全文文本。
 
 你的工作：
@@ -528,7 +540,9 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const model = deepMode ? PRO_MODEL : FLASH_MODEL;
+      const model = selectVisionCompatibleModel(
+        deepMode ? PRO_MODEL : FLASH_MODEL
+      );
       const pageLabel =
         Array.isArray(pageNumbers) && pageNumbers.length > 0
           ? `第 ${pageNumbers[0]}${pageNumbers.length > 1 ? `-${pageNumbers[pageNumbers.length - 1]}` : ""} 页`

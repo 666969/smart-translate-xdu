@@ -140,6 +140,18 @@ function usesZhipuCompatibility() {
   return (process.env.OPENAI_BASE_URL || "").includes("open.bigmodel.cn");
 }
 
+function selectVisionCompatibleModel(preferredModel: string, hasImage: boolean) {
+  const usesDeepSeek = (process.env.OPENAI_BASE_URL || "").includes(
+    "api.deepseek.com"
+  );
+
+  if (hasImage && usesDeepSeek && preferredModel === "deepseek-v4-pro") {
+    return FLASH_MODEL;
+  }
+
+  return preferredModel;
+}
+
 function hasImageInMessages(
   messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[]
 ) {
@@ -1223,7 +1235,10 @@ async function generateDocumentResponse(
   userContent: UserContent,
   useDeepModel: boolean
 ) {
-  const documentModel = useDeepModel ? PRO_MODEL : FLASH_MODEL;
+  const documentModel = selectVisionCompatibleModel(
+    useDeepModel ? PRO_MODEL : FLASH_MODEL,
+    Array.isArray(userContent)
+  );
   const completion = await requestJsonCompletion(
     [
       { role: "system", content: getDocumentSystemPrompt() },
@@ -1315,7 +1330,10 @@ export async function POST(request: NextRequest) {
     let responsePayload: SnippetResponse | DocumentResponse | { translation: string };
 
     if (mode === "snippet") {
-      const snippetModel = deepMode ? PRO_MODEL : FLASH_MODEL;
+      const snippetModel = selectVisionCompatibleModel(
+        deepMode ? PRO_MODEL : FLASH_MODEL,
+        hasImageInput
+      );
       const completion = await requestJsonCompletion(
         [
           { role: "system", content: getSnippetTranslationSystemPrompt() },
