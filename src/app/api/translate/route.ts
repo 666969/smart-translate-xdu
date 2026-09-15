@@ -141,9 +141,10 @@ function usesZhipuCompatibility() {
 }
 
 function selectVisionCompatibleModel(preferredModel: string, hasImage: boolean) {
-  const usesDeepSeek = (process.env.OPENAI_BASE_URL || "").includes(
-    "api.deepseek.com"
-  );
+  const baseURL = process.env.OPENAI_BASE_URL || "";
+  const usesDeepSeek =
+    baseURL.includes("api.deepseek.com") ||
+    baseURL.includes("/api/deepseek-proxy");
 
   if (hasImage && usesDeepSeek && preferredModel === "deepseek-v4-pro") {
     return FLASH_MODEL;

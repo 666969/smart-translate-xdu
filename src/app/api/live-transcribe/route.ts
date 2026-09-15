@@ -49,9 +49,10 @@ function getErrorMessage(error: unknown) {
 
 export async function POST(request: NextRequest) {
   try {
-    const usesDeepSeekTextApi = (process.env.OPENAI_BASE_URL || "").includes(
-      "api.deepseek.com"
-    );
+    const baseURL = process.env.OPENAI_BASE_URL || "";
+    const usesDeepSeekTextApi =
+      baseURL.includes("api.deepseek.com") ||
+      baseURL.includes("/api/deepseek-proxy");
 
     if (usesDeepSeekTextApi && !HAS_DEDICATED_TRANSCRIBE_API) {
       return NextResponse.json(

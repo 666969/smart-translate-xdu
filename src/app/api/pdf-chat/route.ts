@@ -14,9 +14,10 @@ const openai = new OpenAI({
 });
 
 function selectVisionCompatibleModel(preferredModel: string) {
-  const usesDeepSeek = (process.env.OPENAI_BASE_URL || "").includes(
-    "api.deepseek.com"
-  );
+  const baseURL = process.env.OPENAI_BASE_URL || "";
+  const usesDeepSeek =
+    baseURL.includes("api.deepseek.com") ||
+    baseURL.includes("/api/deepseek-proxy");
 
   if (usesDeepSeek && preferredModel === "deepseek-v4-pro") {
     return FLASH_MODEL;
