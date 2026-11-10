@@ -1,5 +1,6 @@
 import { extraGlossaryBooks } from "./extraGlossaryBooks";
 import { moreGlossaryBooks } from "./moreGlossaryBooks";
+import { textbookGlossaryBooks } from "./textbookGlossaryBooks";
 
 export interface GlossaryWord {
   term_fr: string;
@@ -15,6 +16,7 @@ export interface GlossaryModule {
 export interface GlossaryBook {
   title: string;
   modules: GlossaryModule[];
+  source?: { title: string; authors: string; url: string };
 }
 
 export const glossaryData: GlossaryBook[] = [
@@ -314,5 +316,6 @@ export const glossaryData: GlossaryBook[] = [
     ]
   },
   ...extraGlossaryBooks,
-  ...moreGlossaryBooks
+  ...moreGlossaryBooks,
+  ...textbookGlossaryBooks,
 ];

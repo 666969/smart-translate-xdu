@@ -3,6 +3,7 @@
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react";
 import { BookOpen, ChevronLeft, ChevronRight, Download, FileText, FileUp, Image as ImageIcon, Loader2, Save, Send, X } from "lucide-react";
 import Header from "../components/Header";
+import WorkspaceHeading from "../components/WorkspaceHeading";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import { emptyPdfDetails, useAppSession } from "../components/AppSessionProvider";
 import { getLessonRecord, saveLessonRecord, type LessonRecord } from "@/lib/db";
@@ -56,7 +57,7 @@ function PdfPreview({ file, url, page }: { file: File; url: string; page: number
   );
 }
 
-const button = "inline-flex items-center justify-center gap-1.5 rounded-xl border border-card-border bg-white px-3 py-2 text-xs font-medium text-text-muted hover:text-primary disabled:opacity-50";
+const button = "study-button";
 
 export default function PdfPage() {
   const { pdf } = useAppSession();
@@ -353,27 +354,22 @@ export default function PdfPage() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="mx-auto max-w-[1440px] px-4 py-6 lg:px-10">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-bold"><FileText className="text-violet-600" />文献精读</h1>
-            <p className="mt-1 text-sm text-text-muted">翻页对照原文，用中文提问，随时回到答案所依据的课件页面。</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button className={button} disabled={!showFile || isSaving || authLoading} onClick={savePdf}>
-              <Save size={15} />{isSaving ? "保存中" : "保存到本节课"}
-            </button>
-            <button className={button} disabled={!showFile} onClick={() => downloadMarkdownFile("智译西电_课件笔记", studyMarkdown())}>
-              <Download size={15} />导出笔记
-            </button>
-          </div>
-        </div>
+      <main className="study-shell pb-12 pt-6 sm:pt-8">
+        <WorkspaceHeading label="课件阅读" title="文献精读" icon={<FileText size={23} />}
+          description="上传 PDF，翻页对照原文。提问后可从答案里的来源跳回课件页面。">
+          <button className={button + " study-button-primary"} disabled={!showFile || isSaving || authLoading} onClick={savePdf}>
+            <Save size={15} />{isSaving ? "保存中" : "保存到本节课"}
+          </button>
+          <button className={button} disabled={!showFile} onClick={() => downloadMarkdownFile("智译西电_课件笔记", studyMarkdown())}>
+            <Download size={15} />导出笔记
+          </button>
+        </WorkspaceHeading>
 
         {feedback && <p role="status" className="mb-3 rounded-xl bg-sky-50 px-4 py-2 text-sm text-sky-900">{feedback}</p>}
-        <div className="grid min-w-0 gap-5 lg:grid-cols-2">
-          <section ref={previewSection} className="min-w-0 scroll-mt-20 overflow-hidden rounded-2xl border border-card-border bg-white">
+        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <section ref={previewSection} className="study-card min-w-0 scroll-mt-20 overflow-hidden">
             <div className="flex items-center justify-between gap-3 border-b border-card-border px-4 py-3">
-              <h2 className="flex min-w-0 items-center gap-2 font-semibold"><BookOpen size={17} className="shrink-0 text-violet-600" />
+              <h2 className="flex min-w-0 items-center gap-2 font-semibold"><BookOpen size={17} className="shrink-0 text-primary" />
                 <span className="truncate" title={showFile ? pdfFile.name : undefined}>{showFile ? pdfFile.name : "PDF 预览"}</span>
               </h2>
               {showFile && <button onClick={resetDocument} className={button} aria-label="移除文件" title="移除文件"><X size={15} /></button>}
@@ -396,7 +392,7 @@ export default function PdfPage() {
                 </div>
                 <div className="border-t border-card-border px-4 py-3">
                   <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-violet-700">{coverage?.excerpted ? "按页摘录摘要" : "课件摘要"}</h3>
+                    <h3 className="text-sm font-semibold text-primary">{coverage?.excerpted ? "按页摘录摘要" : "课件摘要"}</h3>
                     {pdfExtractStatus === "text_ready" && !isSummarizing && (
                       <button className={button} onClick={() => void runSummary(pdfPages, details.labels, (documentRef.current ??= new AbortController()).signal)}>
                         {summary ? "重新生成" : "生成摘要"}
@@ -419,7 +415,7 @@ export default function PdfPage() {
                   const file = event.dataTransfer.files[0];
                   if (file && !authLoading) void loadPdf(file);
                 }}>
-                <FileUp className="text-violet-600" size={34} />
+                <FileUp className="text-primary" size={34} />
                 <p className="text-sm text-text-muted">
                   {pendingPdfRecord ? "请选择原件 " + (pendingPdfRecord.pdf?.fileName ?? pendingPdfRecord.title) : "拖入 PDF，或从本机选择课件。"}
                 </p>
@@ -437,7 +433,7 @@ export default function PdfPage() {
             }} />
           </section>
 
-          <section className="flex min-h-[27rem] min-w-0 flex-col overflow-hidden rounded-2xl border border-card-border bg-white">
+          <section className="study-card flex min-h-[27rem] min-w-0 flex-col overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border px-4 py-3">
               <h2 className="font-semibold">课件助教</h2>
               <div className="flex gap-2">
@@ -453,7 +449,7 @@ export default function PdfPage() {
               </p>}
               {showFile && chatMessages.map((message, index) => (
                 <div key={index} className={message.role === "user"
-                  ? "ml-auto w-fit max-w-full break-words rounded-xl bg-violet-100 px-3 py-2 text-sm"
+                  ? "ml-auto w-fit max-w-full break-words rounded-xl bg-study-soft px-3 py-2 text-sm"
                   : "rounded-xl border border-card-border bg-slate-50 p-3"}>
                   {message.role === "user" || message.error
                     ? <p className={message.error ? "text-sm text-rose-700" : "whitespace-pre-wrap"}>{message.content}</p>
@@ -469,7 +465,7 @@ export default function PdfPage() {
                           }}>{pdfPageTitle(source.page, source.label)}</button>
                           {source.quote && <details className="text-xs text-text-muted">
                             <summary className="cursor-pointer">查看原文片段</summary>
-                            <blockquote className="mt-1 max-h-36 overflow-y-auto whitespace-pre-wrap break-words border-l-2 border-violet-200 pl-2">{source.quote}</blockquote>
+                            <blockquote className="mt-1 max-h-36 overflow-y-auto whitespace-pre-wrap break-words border-l-2 border-primary/20 pl-2">{source.quote}</blockquote>
                           </details>}
                         </div>
                       ))}
@@ -490,7 +486,7 @@ export default function PdfPage() {
                 <input aria-label="课件问题" maxLength={MAX_CHAT_MESSAGE_CHARS} disabled={!showFile || !canAsk || isAsking}
                   value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="例如，什么是米勒效应？"
                   className="min-w-0 flex-1 rounded-xl border border-card-border px-3 py-2 text-sm disabled:bg-slate-50" />
-                <button className="rounded-xl bg-violet-600 px-3 text-white disabled:opacity-50"
+                <button className="study-button study-button-primary"
                   aria-label="发送问题" disabled={!showFile || !canAsk || !chatInput.trim() || isAsking}><Send size={17} /></button>
               </div>
             </form>

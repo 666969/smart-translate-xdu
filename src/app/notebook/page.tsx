@@ -18,6 +18,7 @@ import {
   FileText,
 } from "lucide-react";
 import Header from "../components/Header";
+import WorkspaceHeading from "../components/WorkspaceHeading";
 import LessonArchive from "../components/LessonArchive";
 import CloudStudyImport from "../components/CloudStudyImport";
 import SpeakButton from "../components/SpeakButton";
@@ -466,27 +467,19 @@ export default function NotebookPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
 
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 lg:px-8 py-8">
-        {/* Page Header */}
-        <div className="mb-8 animate-fade-in-up">
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
-              <Star size={20} />
-            </div>
-            我的笔记本
-          </h1>
-          <p className="text-sm text-text-muted mt-2">
-            收藏的术语和做错的题目都在这里，利用艾宾浩斯记忆曲线帮你记得更牢。
-          </p>
-        </div>
+      <main className="study-shell flex-1 pb-12 pt-6 sm:pt-8">
+        <WorkspaceHeading label="复习与归档" title="我的笔记本" icon={<Star size={23} />}
+          description="在同一处查看生词、错题、课件笔记和课堂字幕。可以按课节筛选。">
+          <span className="rounded-lg bg-study-warm px-3 py-2 text-xs font-semibold text-amber-900">{dueVocabs.length} 条待复习</span>
+        </WorkspaceHeading>
 
         {usesCloudStudy(ownerId) && <CloudStudyImport key={ownerId} ownerId={ownerId} onImported={loadData} />}
         {cloudStudyEnabled && !usesCloudStudy(ownerId) && (
           <p className="mb-4 rounded-2xl border border-card-border bg-white p-4 text-sm text-text-muted">登录后可保存云端记录，并导入此浏览器的旧记录。</p>
         )}
         {loadError && <p role="alert" className="mb-3 text-sm text-rose-700">{loadError}</p>}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-card-border bg-white px-4 py-3 text-sm">
-          <button type="button" className="font-medium text-primary" onClick={() => setTab("lessons")}>打开课程档案（{lessonRecords.length}）</button>
+        <div className="study-card mb-3 flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+          <p className="font-semibold text-foreground">学习记录</p>
           <label className="flex flex-wrap items-center gap-2 text-text-muted">
             按课节查看
             <select value={lessonFilter} onChange={(event) => setLessonFilter(event.target.value)}
@@ -496,12 +489,29 @@ export default function NotebookPage() {
             </select>
           </label>
         </div>
-        {tab === "lessons" && <div className="mb-6">
-          <LessonArchive records={lessonRecords} onRemove={async (id) => {
-            await removeLessonRecord(ownerId, id);
-            await loadData();
-          }} />
-        </div>}
+<div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="study-segment" role="group" aria-label="笔记本分类">
+            <button type="button" aria-pressed={tab === "vocab"} onClick={() => setTab("vocab")}>
+              生词本 <span className="text-[11px] opacity-70">{vocabs.length}</span>
+            </button>
+            <button type="button" aria-pressed={tab === "wrong"} onClick={() => setTab("wrong")}>
+              错题本 <span className="text-[11px] opacity-70">{unresolvedWrong.length}</span>
+            </button>
+            <button type="button" aria-pressed={tab === "lessons"} onClick={() => setTab("lessons")}>
+              课程档案 <span className="text-[11px] opacity-70">{lessonRecords.length}</span>
+            </button>
+          </div>
+          {tab === "vocab" && dueVocabs.length > 0 && (
+            <button type="button" className="study-button study-button-primary" onClick={() => setIsReviewing(true)}>
+              <RotateCcw size={15} />开始复习
+            </button>
+          )}
+        </div>
+
+<details className="study-card mb-4">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-primary">学习统计与考前冲刺包</summary>
+          <div className="px-3 pt-2 sm:px-5">
+
         <section className="mb-6 space-y-4 animate-fade-in-up-delay-1">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <DashboardMetricCard
@@ -955,56 +965,16 @@ export default function NotebookPage() {
           </section>
         )}
 
-        {/* Tab Switcher */}
-        <div className="flex flex-wrap items-center gap-2 mb-6 animate-fade-in-up-delay-1">
-          <div className="inline-flex bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
-            <button
-              onClick={() => setTab("vocab")}
-              className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                tab === "vocab"
-                  ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm"
-                  : "text-text-muted hover:text-foreground"
-              }`}
-            >
-              📚 生词本
-              {vocabs.length > 0 && (
-                <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] bg-white/20">
-                  {vocabs.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setTab("wrong")}
-              className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                tab === "wrong"
-                  ? "bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-sm"
-                  : "text-text-muted hover:text-foreground"
-              }`}
-            >
-              ❌ 错题本
-              {unresolvedWrong.length > 0 && (
-                <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] bg-white/20">
-                  {unresolvedWrong.length}
-                </span>
-              )}
-            </button>
-            <button type="button" onClick={() => setTab("lessons")}
-              className={"rounded-lg px-3 py-2 text-sm font-medium " + (tab === "lessons" ? "bg-primary text-white" : "text-text-muted")}>
-              课程档案
-            </button>
+
           </div>
+        </details>
 
-          {tab === "vocab" && dueVocabs.length > 0 && (
-            <button
-              onClick={() => setIsReviewing(true)}
-              className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-white text-sm font-medium hover:shadow-lg hover:shadow-primary/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <RotateCcw size={16} />
-              开始复习 ({dueVocabs.length} 个待复习)
-            </button>
-          )}
-        </div>
-
+        {tab === "lessons" && <div className="mb-6">
+          <LessonArchive records={lessonRecords} onRemove={async (id) => {
+            await removeLessonRecord(ownerId, id);
+            await loadData();
+          }} />
+        </div>}
         {/* Vocab Tab */}
         {tab === "vocab" && (
           <div className="animate-fade-in-up-delay-2">

@@ -3,6 +3,7 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { AlertCircle, Bookmark, BookOpen, Download, Globe, Mic, Monitor, Square } from "lucide-react";
 import Header from "./Header";
+import WorkspaceHeading from "./WorkspaceHeading";
 import { useLesson } from "@/hooks/useLesson";
 import { glossaryData } from "@/data/glossaryData";
 import { saveLessonRecord } from "@/lib/db";
@@ -10,7 +11,7 @@ import { cloudStudyEnabled, studySaveError, usesCloudStudy } from "@/lib/studySt
 import { captureClassroomAudio } from "@/lib/classroomAudio";
 import { buildLiveSessionMarkdown, downloadMarkdownFile } from "@/lib/markdownExport";
 
-const button = "inline-flex items-center justify-center gap-2 rounded-xl border border-card-border bg-white px-3 py-2 text-sm font-medium text-text-muted hover:text-primary disabled:opacity-50";
+const button = "study-button";
 const MAX_AUDIO_WAITING = 3;
 const MAX_TRANSLATIONS_WAITING = 16;
 
@@ -429,14 +430,22 @@ function LiveSession({ ownerId, lesson, loading }) {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="mx-auto max-w-[1440px] space-y-4 px-4 py-6 lg:px-10">
-        <section className="rounded-2xl border border-card-border bg-white p-4 lg:p-5">
-          <h1 className="flex items-center gap-2 text-2xl font-bold"><Mic className="text-primary" />随堂同传</h1>
-          <p className="mt-2 text-sm text-text-muted">
+      <main className="study-shell space-y-4 pb-12 pt-6 sm:pt-8">
+        <WorkspaceHeading label="课堂跟听" title="随堂同传" icon={<Mic size={23} />}
+          description="先看法语或英语原文，再看中文字幕。可以标记没听懂的句子，课后继续回看。">
+          <span role="status" className="inline-flex items-center gap-2 rounded-lg border border-card-border bg-background px-3 py-2 text-xs font-semibold text-text-muted">
+            <span className={"size-2 rounded-full " + (isListening ? "bg-success" : busy ? "bg-amber-500" : "bg-primary-lighter")} aria-hidden="true" />
+            {isListening ? "正在收音" : busy ? "处理中" : "等待开始"}
+          </span>
+        </WorkspaceHeading>
+
+        <section className="study-card p-4 lg:p-5">
+          <h2 className="text-sm font-semibold">收音设置</h2>
+          <p className="mt-1 text-xs leading-6 text-text-muted">
             {usesCloudStudy(ownerId)
               ? "课堂文字记录每 20 秒保存到云端，也可手动保存。"
               : cloudStudyEnabled ? "可以先以访客身份跟听，登录后保存文字记录到云端。"
-                : "先显示法语或英语原文，再补中文字幕。文字记录会保存到本浏览器的课程档案。"}
+                : "文字记录会保存到本浏览器的课程档案。"}
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button className={button} aria-pressed={inputSource === "mic"} disabled={busy} onClick={() => setInputSource("mic")}><Mic size={16} />麦克风</button>
@@ -446,7 +455,7 @@ function LiveSession({ ownerId, lesson, loading }) {
                 <option value="fr-FR">法语</option><option value="en-US">英语</option>
               </select>
             </label>
-            <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            <button className="study-button study-button-primary"
               disabled={loading || (!isListening && (busy || !canStart))}
               onClick={() => isListening ? stopCapture() : inputSource === "tab" ? setShowTabGuide(true) : void startCapture()}>
               {isListening ? <Square size={15} /> : <Mic size={15} />}
@@ -471,7 +480,7 @@ function LiveSession({ ownerId, lesson, loading }) {
           {saveNotice && <p role="status" className="mt-2 text-sm text-emerald-700">{saveNotice}</p>}
         </section>
 
-        {showTabGuide && <section className="rounded-2xl border border-card-border bg-white p-4">
+        {showTabGuide && <section className="study-card p-4">
           <h2 className="font-semibold">共享老师所在的浏览器标签页</h2>
           <p className="mt-1 text-sm text-text-muted">选择「标签页」并勾选共享音频。网页会把音频分段交给已配置的转写服务。</p>
           <div className="mt-3 flex gap-2">
@@ -481,7 +490,7 @@ function LiveSession({ ownerId, lesson, loading }) {
         </section>}
 
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <section className="min-w-0 rounded-2xl border border-card-border bg-white p-4">
+          <section className="study-card min-w-0 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">双语字幕 <span className="text-sm font-normal text-text-muted">· {subtitles.length} 条</span></h2>
               {!follow && <button className={button} onClick={returnToLatest}>回到最新字幕</button>}
@@ -519,7 +528,7 @@ function LiveSession({ ownerId, lesson, loading }) {
               ))}
             </div>
           </section>
-          <aside className="rounded-2xl border border-card-border bg-white p-4">
+          <aside className="study-card p-4">
             <h2 className="flex items-center gap-2 font-semibold"><BookOpen size={16} className="text-primary" />课程术语</h2>
             <p className="mt-1 text-xs text-text-muted">{lesson || "匹配已有理工科词库"}</p>
             <div className="mt-3 max-h-[58vh] space-y-2 overflow-y-auto">
