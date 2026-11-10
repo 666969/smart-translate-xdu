@@ -5,12 +5,15 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  reload,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
@@ -25,10 +28,13 @@ export interface AuthContextValue {
   loading: boolean;
   isAuthenticated: boolean;
   isConfigured: boolean;
+  emailVerified: boolean;
   signUp: (email: string, password: string) => Promise<User>;
   signIn: (email: string, password: string) => Promise<User>;
   signInWithGoogle: () => Promise<User>;
   signOut: () => Promise<void>;
+  sendVerificationEmail: () => Promise<boolean>;
+  refreshEmailVerification: () => Promise<boolean>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -40,15 +46,19 @@ function getMissingConfigError() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(Boolean(auth));
+  const [emailVerified, setEmailVerified] = useState(false);
+  const sendingVerification = useRef(false);
+  const lastVerification = useRef<{ uid: string; sentAt: number } | null>(null);
 
   useEffect(() => {
-    if (!auth) {
+    const activeAuth = auth;
+    if (!activeAuth) {
       return;
     }
 
     let isMounted = true;
 
-    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+    const unsubscribe = onAuthStateChanged(activeAuth, (nextUser) => {
       void (async () => {
         if (nextUser) {
           try {
@@ -58,11 +68,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        if (!isMounted) {
+        if (!isMounted || activeAuth.currentUser !== nextUser) {
           return;
         }
 
         setUser(nextUser);
+        setEmailVerified(nextUser?.emailVerified ?? false);
         setLoading(false);
       })();
     });
@@ -108,6 +119,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await firebaseSignOut(auth);
   }, []);
 
+  const refreshEmailUser = useCallback(async () => {
+    const current = auth?.currentUser;
+    if (!current?.email) throw new Error("请先登录带邮箱的账号。");
+    await reload(current);
+    if (auth?.currentUser !== current) throw new Error("登录状态已变更，请重新打开账号菜单。");
+    setEmailVerified(current.emailVerified);
+    return current;
+  }, []);
+
+  const sendVerificationEmail = useCallback(async () => {
+    if (sendingVerification.current) throw new Error("验证邮件正在发送。");
+    sendingVerification.current = true;
+    try {
+      const current = await refreshEmailUser();
+      if (current.emailVerified) return false;
+      const last = lastVerification.current;
+      if (last?.uid === current.uid && Date.now() - last.sentAt < 60_000) {
+        throw new Error("验证邮件刚刚发送，请稍候再试。");
+      }
+      await sendEmailVerification(current, { url: new URL("/", window.location.origin).href });
+      lastVerification.current = { uid: current.uid, sentAt: Date.now() };
+      return true;
+    } finally {
+      sendingVerification.current = false;
+    }
+  }, [refreshEmailUser]);
+
+  const refreshEmailVerification = useCallback(
+    async () => (await refreshEmailUser()).emailVerified,
+    [refreshEmailUser]
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -115,12 +158,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       isAuthenticated: Boolean(user),
       isConfigured: isFirebaseConfigured,
+      emailVerified,
       signUp,
       signIn,
       signInWithGoogle,
       signOut,
+      sendVerificationEmail,
+      refreshEmailVerification,
     }),
-    [loading, signIn, signInWithGoogle, signOut, signUp, user]
+    [emailVerified, loading, refreshEmailVerification, sendVerificationEmail, signIn, signInWithGoogle, signOut, signUp, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

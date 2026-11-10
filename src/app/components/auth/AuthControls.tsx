@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Loader2, LogOut, Sparkles } from "lucide-react";
 import AuthModal from "./AuthModal";
+import EmailVerification from "./EmailVerification";
 import { useAuth } from "@/hooks/useAuth";
 
 interface AuthControlsProps {
@@ -72,7 +73,7 @@ export default function AuthControls({ compact = false }: AuthControlsProps) {
           <Sparkles size={compact ? 14 : 16} />
           <span>{compact ? "登录" : "登录 / 注册"}</span>
         </button>
-        <AuthModal open={isModalOpen} onClose={() => setIsModalOpen(false)} />
+        <AuthModal open={isModalOpen} onClose={() => setIsModalOpen(false)} onRegistered={() => setIsMenuOpen(true)} />
       </>
     );
   }
@@ -81,6 +82,8 @@ export default function AuthControls({ compact = false }: AuthControlsProps) {
     <>
       <div className="relative" ref={menuRef}>
         <button
+          aria-label="账号菜单"
+          aria-expanded={isMenuOpen}
           onClick={() => setIsMenuOpen((current) => !current)}
           className={`inline-flex items-center gap-2 rounded-full border border-card-border/70 bg-white/85 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-lg hover:shadow-primary/10 ${
             compact ? "px-2 py-2" : "px-2.5 py-2"
@@ -115,13 +118,14 @@ export default function AuthControls({ compact = false }: AuthControlsProps) {
           <div className="absolute right-0 top-[calc(100%+12px)] z-50 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-[0_24px_60px_-24px_rgba(30,58,95,0.35)] backdrop-blur-xl animate-fade-in">
             <div className="rounded-xl bg-slate-50 px-3 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
-                Signed In
+                已登录
               </p>
               <p className="mt-2 truncate text-sm font-semibold text-slate-800">
                 {user.displayName || initial}
               </p>
               <p className="mt-1 truncate text-xs text-slate-500">{user.email || user.uid}</p>
             </div>
+            {user.email && <EmailVerification key={user.uid} />}
             <button
               onClick={handleSignOut}
               disabled={isSigningOut}
@@ -131,13 +135,11 @@ export default function AuthControls({ compact = false }: AuthControlsProps) {
                 {isSigningOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
                 退出登录
               </span>
-              <span className="text-xs text-slate-400">Local only</span>
             </button>
           </div>
         )}
       </div>
 
-      <AuthModal open={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </>
   );
 }

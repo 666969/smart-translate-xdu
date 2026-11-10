@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 interface AuthModalProps {
   open: boolean;
   onClose: () => void;
+  onRegistered: () => void;
 }
 
 type AuthMode = "signIn" | "signUp";
@@ -40,7 +41,7 @@ function getAuthErrorMessage(error: unknown) {
   }
 }
 
-export default function AuthModal({ open, onClose }: AuthModalProps) {
+export default function AuthModal({ open, onClose, onRegistered }: AuthModalProps) {
   const { signIn, signUp, signInWithGoogle, isConfigured } = useAuth();
   const [mode, setMode] = useState<AuthMode>("signIn");
   const [email, setEmail] = useState("");
@@ -82,8 +83,8 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
   const modeLabel = useMemo(
     () =>
       mode === "signIn"
-        ? { title: "欢迎回来", action: "登录", switchText: "没有账号？注册一个" }
-        : { title: "创建你的学习身份", action: "注册", switchText: "已有账号？去登录" },
+        ? { title: "欢迎回来", action: "使用邮箱登录", switchText: "没有账号？注册一个" }
+        : { title: "创建学习账号", action: "注册邮箱账号", switchText: "已有账号？去登录" },
     [mode]
   );
 
@@ -101,6 +102,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
         await signIn(email.trim(), password);
       } else {
         await signUp(email.trim(), password);
+        onRegistered();
       }
       onClose();
     } catch (error) {
@@ -139,11 +141,11 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-medium tracking-[0.24em] uppercase">
                 <Sparkles size={12} />
-                Auth Portal
+                学习账号
               </div>
               <h2 className="text-2xl font-semibold tracking-tight">{modeLabel.title}</h2>
               <p className="mt-2 max-w-sm text-sm leading-6 text-white/78">
-                保持匿名也能直接体验核心功能，登录后只负责区分你的本地单词本与错题本。
+                QQ、163、Outlook 和学校邮箱都可以注册。登录后，本浏览器的学习记录会按账号区分。
               </p>
             </div>
             <button
@@ -182,31 +184,9 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
 
           {!isConfigured && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-700">
-              Firebase 环境变量尚未配置。补全 `NEXT_PUBLIC_FIREBASE_*` 后即可启用登录。
+              当前网址暂未开通账号服务。你可以继续以访客身份学习。
             </div>
           )}
-
-          <button
-            type="button"
-            onClick={handleGoogleSubmit}
-            disabled={submitting || !isConfigured}
-            className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-          >
-            {submitting ? (
-              <Loader2 size={16} className="animate-spin text-primary" />
-            ) : (
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-bold text-primary">
-                G
-              </span>
-            )}
-            使用 Google 登录
-          </button>
-
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span className="h-px flex-1 bg-slate-200" />
-            <span>或使用邮箱</span>
-            <span className="h-px flex-1 bg-slate-200" />
-          </div>
 
           <form className="space-y-4" onSubmit={handleEmailSubmit}>
             <label className="block">
@@ -219,14 +199,14 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                  placeholder="you@xidian.edu.cn"
+                  placeholder="例如 123456789@qq.com"
                   required
                 />
               </div>
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">密码</span>
+              <span className="mb-2 block text-sm font-medium text-slate-700">本站密码</span>
               <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm transition-all duration-300 focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/10">
                 <LockKeyhole size={16} className="text-slate-400" />
                 <input
@@ -235,7 +215,7 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                  placeholder="至少 6 位"
+                  placeholder={mode === "signUp" ? "为本站设置至少 6 位的密码" : "输入注册时设置的密码"}
                   required
                   minLength={6}
                 />
@@ -265,6 +245,28 @@ export default function AuthModal({ open, onClose }: AuthModalProps) {
           >
             {modeLabel.switchText}
           </button>
+
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span>其他登录方式</span>
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+          <button
+            type="button"
+            onClick={handleGoogleSubmit}
+            disabled={submitting || !isConfigured}
+            className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+          >
+            {submitting ? (
+              <Loader2 size={16} className="animate-spin text-primary" />
+            ) : (
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-bold text-primary">
+                G
+              </span>
+            )}
+            使用 Google 账号登录
+          </button>
+
           <button
             type="button"
             onClick={onClose}
