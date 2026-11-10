@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import Header from "../components/Header";
 import LessonArchive from "../components/LessonArchive";
+import CloudStudyImport from "../components/CloudStudyImport";
 import SpeakButton from "../components/SpeakButton";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import {
@@ -33,7 +34,8 @@ import {
   getLessonRecords,
   removeLessonRecord,
 } from "@/lib/db";
-import type { VocabItem, WrongAnswerItem, LessonRecord } from "@/lib/db";
+import type { VocabItem, WrongAnswerItem, LessonRecord, StudyItemId } from "@/lib/db";
+import { cloudStudyEnabled, usesCloudStudy } from "@/lib/studyStorage";
 import {
   buildNotebookDashboardStats,
   buildSprintPack,
@@ -59,13 +61,24 @@ function FlashcardReview({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [reviewedCount, setReviewedCount] = useState(0);
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [reviewError, setReviewError] = useState("");
 
   const current = cards[currentIndex];
   const isLast = currentIndex >= cards.length - 1;
 
   const handleResponse = async (remembered: boolean) => {
-    if (!current?.id) return;
-    await markVocabReviewed(ownerId, current.id, remembered);
+    if (!current?.id || reviewSaving) return;
+    setReviewSaving(true);
+    setReviewError("");
+    try {
+      await markVocabReviewed(ownerId, current.id, remembered);
+    } catch {
+      setReviewError("暂时无法保存复习进度，请重试。");
+      return;
+    } finally {
+      setReviewSaving(false);
+    }
     setReviewedCount((c) => c + 1);
 
     if (isLast) {
@@ -138,11 +151,13 @@ function FlashcardReview({
           )}
         </div>
 
+        {reviewError && <p role="alert" className="px-6 pb-2 text-sm text-rose-700">{reviewError}</p>}
         {/* Action buttons */}
         {flipped && (
           <div className="px-6 pb-6 flex gap-3 animate-fade-in">
             <button
               onClick={() => handleResponse(false)}
+              disabled={reviewSaving}
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-red-200 text-red-600 font-medium hover:bg-red-50 transition-colors"
             >
               <RotateCcw size={18} />
@@ -150,6 +165,7 @@ function FlashcardReview({
             </button>
             <button
               onClick={() => handleResponse(true)}
+              disabled={reviewSaving}
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-medium hover:shadow-lg transition-all"
             >
               <Check size={18} />
@@ -347,7 +363,9 @@ export default function NotebookPage() {
       setLoadError("");
       setDashboardTimestamp(Date.now());
     } catch {
-      if (id === loadId.current) setLoadError("暂时无法读取本地笔记，请刷新后重试。");
+      if (id === loadId.current) {
+        setLoadError(usesCloudStudy(ownerId) ? "暂时无法读取云端笔记，请检查网络后刷新。" : "暂时无法读取本地笔记，请刷新后重试。");
+      }
     }
   }, [ownerId]);
 
@@ -364,17 +382,25 @@ export default function NotebookPage() {
     setIsReviewing(false);
   }, [ownerId, setFlippedCardIds, setIsReviewing, setRequizItemId]);
 
-  const handleDeleteVocab = async (id: number) => {
-    await removeVocab(ownerId, id);
-    loadData();
+  const handleDeleteVocab = async (id: StudyItemId) => {
+    try {
+      await removeVocab(ownerId, id);
+      await loadData();
+    } catch {
+      setLoadError("暂时无法移除生词，请重试。");
+    }
   };
 
-  const handleDeleteWrong = async (id: number) => {
-    await removeWrongAnswer(ownerId, id);
-    loadData();
+  const handleDeleteWrong = async (id: StudyItemId) => {
+    try {
+      await removeWrongAnswer(ownerId, id);
+      await loadData();
+    } catch {
+      setLoadError("暂时无法移除错题，请重试。");
+    }
   };
 
-  const toggleFlip = (id: number) => {
+  const toggleFlip = (id: StudyItemId) => {
     setFlippedCardIds((prev) => {
       if (prev.includes(id)) {
         return prev.filter((itemId) => itemId !== id);
@@ -454,6 +480,10 @@ export default function NotebookPage() {
           </p>
         </div>
 
+        {usesCloudStudy(ownerId) && <CloudStudyImport key={ownerId} ownerId={ownerId} onImported={loadData} />}
+        {cloudStudyEnabled && !usesCloudStudy(ownerId) && (
+          <p className="mb-4 rounded-2xl border border-card-border bg-white p-4 text-sm text-text-muted">登录后可保存云端记录，并导入此浏览器的旧记录。</p>
+        )}
         {loadError && <p role="alert" className="mb-3 text-sm text-rose-700">{loadError}</p>}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-card-border bg-white px-4 py-3 text-sm">
           <button type="button" className="font-medium text-primary" onClick={() => setTab("lessons")}>打开课程档案（{lessonRecords.length}）</button>

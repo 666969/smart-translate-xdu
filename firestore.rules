@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owns(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    match /zhiyiUsers/{userId}/{kind}/{recordId} {
+      function isStudyRecord() {
+        return kind in ['vocabulary', 'wrong_answers', 'lesson_records'];
+      }
+
+      function validRecord() {
+        return request.resource.data.ownerId == userId &&
+          (kind != 'lesson_records' ||
+            (request.resource.data.keys().hasOnly(['ownerId', 'updatedAt', 'partCount', 'payload']) &&
+             request.resource.data.updatedAt is int &&
+             request.resource.data.partCount is int &&
+             request.resource.data.partCount >= 0 && request.resource.data.partCount <= 32 &&
+             request.resource.data.payload is string));
+      }
+
+      allow read, delete: if owns(userId) && isStudyRecord();
+      allow create, update: if owns(userId) && isStudyRecord() && validRecord();
+
+      match /parts/{partId} {
+        allow read, delete: if owns(userId) && kind == 'lesson_records';
+        allow create, update: if owns(userId) && kind == 'lesson_records' &&
+          request.resource.data.keys().hasOnly(['text']) && request.resource.data.text is string &&
+          request.resource.data.text.size() <= 660000;
+      }
+    }
+  }
+}

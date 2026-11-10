@@ -11,6 +11,7 @@
  */
 
 import type { PdfCoverage, PdfSource } from "./pdfNavigation";
+import { cloudStudyEnabled, GUEST_OWNER_ID, requireStudySaveAccount, usesCloudStudy } from "./studyStorage";
 
 const DB_NAME = "zhiyi-xidian-db";
 const DB_VERSION = 3;
@@ -23,12 +24,13 @@ const VOCAB_DUE_INDEX = "ownerId_nextReviewAt";
 const MIGRATION_FLAG_PREFIX = "auth-migrated:";
 const MIGRATION_FLAG_VERSION = "v1";
 
-export const GUEST_OWNER_ID = "guest";
+export { GUEST_OWNER_ID } from "./studyStorage";
+export type StudyItemId = number | string;
 
 /* ========== Types ========== */
 
 export interface VocabItem {
-  id?: number;
+  id?: StudyItemId;
   ownerId: string;
   term_fr: string;
   term_zh: string;
@@ -42,7 +44,7 @@ export interface VocabItem {
 }
 
 export interface WrongAnswerItem {
-  id?: number;
+  id?: StudyItemId;
   ownerId: string;
   question_fr: string;
   question_zh: string;
@@ -73,7 +75,9 @@ export interface LessonRecord {
   markdown: string;
   updatedAt: number;
   pdf?: {
-    file: File;
+    file?: File;
+    fileName?: string;
+    fileSize?: number;
     page: number;
     summary: string | null;
     coverage: PdfCoverage | null;
@@ -105,6 +109,11 @@ export function resolveOwnerId(uid?: string | null) {
 function getNextReviewTime(reviewCount: number): number {
   const interval = REVIEW_INTERVALS[Math.min(reviewCount, REVIEW_INTERVALS.length - 1)];
   return Date.now() + interval * 60 * 1000;
+}
+
+function nextVocabReview(item: VocabItem, remembered: boolean) {
+  const reviewCount = remembered ? item.reviewCount + 1 : Math.max(0, item.reviewCount - 1);
+  return { reviewCount, nextReviewAt: getNextReviewTime(reviewCount) };
 }
 
 function ensureVocabStoreIndexes(store: IDBObjectStore) {
@@ -251,20 +260,17 @@ async function getOwnedRecord<T extends OwnerScopedRecord>(
 export async function addVocab(
   ownerId: string,
   item: Omit<VocabItem, "id" | "ownerId" | "createdAt" | "nextReviewAt" | "reviewCount">
-): Promise<number> {
+): Promise<StudyItemId> {
+  requireStudySaveAccount(ownerId);
+  const record: VocabItem = {
+    ...item, ownerId, createdAt: Date.now(), nextReviewAt: getNextReviewTime(0), reviewCount: 0,
+  };
+  if (usesCloudStudy(ownerId)) return (await import("./cloudStudy")).saveCloudVocab(record);
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(VOCAB_STORE, "readwrite");
     const store = tx.objectStore(VOCAB_STORE);
-
-    const record: VocabItem = {
-      ...item,
-      ownerId,
-      createdAt: Date.now(),
-      nextReviewAt: getNextReviewTime(0),
-      reviewCount: 0,
-    };
 
     const request = store.add(record);
     request.onsuccess = () => resolve(request.result as number);
@@ -273,10 +279,14 @@ export async function addVocab(
 }
 
 export async function getAllVocabs(ownerId: string): Promise<VocabItem[]> {
+  if (usesCloudStudy(ownerId)) return (await import("./cloudStudy")).listCloudItems<VocabItem>(ownerId, VOCAB_STORE);
   return getAllByOwner<VocabItem>(VOCAB_STORE, ownerId);
 }
 
 export async function getVocabsDueForReview(ownerId: string): Promise<VocabItem[]> {
+  if (usesCloudStudy(ownerId)) {
+    return (await import("./cloudStudy")).listCloudItems<VocabItem>(ownerId, VOCAB_STORE, Date.now());
+  }
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
@@ -301,9 +311,15 @@ export async function getVocabsDueForReview(ownerId: string): Promise<VocabItem[
 
 export async function markVocabReviewed(
   ownerId: string,
-  id: number,
+  id: StudyItemId,
   remembered: boolean
 ): Promise<void> {
+  requireStudySaveAccount(ownerId);
+  if (usesCloudStudy(ownerId)) {
+    return (await import("./cloudStudy")).updateCloudItem<VocabItem>(
+      ownerId, VOCAB_STORE, id, (item) => nextVocabReview(item, remembered),
+    );
+  }
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
@@ -318,12 +334,7 @@ export async function markVocabReviewed(
         return;
       }
 
-      if (remembered) {
-        item.reviewCount += 1;
-      } else {
-        item.reviewCount = Math.max(0, item.reviewCount - 1);
-      }
-      item.nextReviewAt = getNextReviewTime(item.reviewCount);
+      Object.assign(item, nextVocabReview(item, remembered));
 
       const putRequest = store.put(item);
       putRequest.onsuccess = () => resolve();
@@ -334,7 +345,8 @@ export async function markVocabReviewed(
   });
 }
 
-export async function removeVocab(ownerId: string, id: number): Promise<void> {
+export async function removeVocab(ownerId: string, id: StudyItemId): Promise<void> {
+  if (usesCloudStudy(ownerId)) return (await import("./cloudStudy")).removeCloudItem(ownerId, VOCAB_STORE, id);
   const item = await getOwnedRecord<VocabItem>(VOCAB_STORE, ownerId, id);
   if (!item) {
     throw new Error("Vocab not found");
@@ -353,6 +365,7 @@ export async function removeVocab(ownerId: string, id: number): Promise<void> {
 }
 
 export async function isVocabExists(ownerId: string, term: string, lesson = "", language = "fr"): Promise<boolean> {
+  if (usesCloudStudy(ownerId)) return (await import("./cloudStudy")).cloudVocabExists(ownerId, term, lesson, language);
   const items = await getAllVocabs(ownerId);
   return items.some((item) => item.term_fr === term && (item.lesson ?? "") === lesson &&
     (item.language ?? "fr") === language);
@@ -363,19 +376,15 @@ export async function isVocabExists(ownerId: string, term: string, lesson = "", 
 export async function addWrongAnswer(
   ownerId: string,
   item: Omit<WrongAnswerItem, "id" | "ownerId" | "createdAt" | "resolved">
-): Promise<number> {
+): Promise<StudyItemId> {
+  requireStudySaveAccount(ownerId);
+  const record: WrongAnswerItem = { ...item, ownerId, createdAt: Date.now(), resolved: false };
+  if (usesCloudStudy(ownerId)) return (await import("./cloudStudy")).saveCloudWrongAnswer(record);
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(WRONG_ANSWER_STORE, "readwrite");
     const store = tx.objectStore(WRONG_ANSWER_STORE);
-
-    const record: WrongAnswerItem = {
-      ...item,
-      ownerId,
-      createdAt: Date.now(),
-      resolved: false,
-    };
 
     const request = store.add(record);
     request.onsuccess = () => resolve(request.result as number);
@@ -384,10 +393,17 @@ export async function addWrongAnswer(
 }
 
 export async function getAllWrongAnswers(ownerId: string): Promise<WrongAnswerItem[]> {
+  if (usesCloudStudy(ownerId)) return (await import("./cloudStudy")).listCloudItems<WrongAnswerItem>(ownerId, WRONG_ANSWER_STORE);
   return getAllByOwner<WrongAnswerItem>(WRONG_ANSWER_STORE, ownerId);
 }
 
-export async function resolveWrongAnswer(ownerId: string, id: number): Promise<void> {
+export async function resolveWrongAnswer(ownerId: string, id: StudyItemId): Promise<void> {
+  requireStudySaveAccount(ownerId);
+  if (usesCloudStudy(ownerId)) {
+    return (await import("./cloudStudy")).updateCloudItem<WrongAnswerItem>(
+      ownerId, WRONG_ANSWER_STORE, id, () => ({ resolved: true }),
+    );
+  }
   const db = await openDB();
 
   return new Promise((resolve, reject) => {
@@ -412,7 +428,8 @@ export async function resolveWrongAnswer(ownerId: string, id: number): Promise<v
   });
 }
 
-export async function removeWrongAnswer(ownerId: string, id: number): Promise<void> {
+export async function removeWrongAnswer(ownerId: string, id: StudyItemId): Promise<void> {
+  if (usesCloudStudy(ownerId)) return (await import("./cloudStudy")).removeCloudItem(ownerId, WRONG_ANSWER_STORE, id);
   const item = await getOwnedRecord<WrongAnswerItem>(WRONG_ANSWER_STORE, ownerId, id);
   if (!item) {
     throw new Error("Wrong answer not found");
@@ -431,6 +448,8 @@ export async function removeWrongAnswer(ownerId: string, id: number): Promise<vo
 }
 
 export async function saveLessonRecord(record: LessonRecord) {
+  requireStudySaveAccount(record.ownerId);
+  if (usesCloudStudy(record.ownerId)) return (await import("./cloudStudy")).saveCloudLesson(record);
   const db = await openDB();
   try {
     const tx = db.transaction(LESSON_STORE, "readwrite");
@@ -451,15 +470,18 @@ export async function saveLessonRecord(record: LessonRecord) {
   }
 }
 
-export function getLessonRecords(ownerId: string) {
+export async function getLessonRecords(ownerId: string) {
+  if (usesCloudStudy(ownerId)) return (await import("./cloudStudy")).listCloudLessons(ownerId);
   return getAllByOwner<LessonRecord>(LESSON_STORE, ownerId);
 }
 
-export function getLessonRecord(ownerId: string, id: string) {
+export async function getLessonRecord(ownerId: string, id: string) {
+  if (usesCloudStudy(ownerId)) return (await import("./cloudStudy")).readCloudLesson(ownerId, id);
   return getOwnedRecord<LessonRecord>(LESSON_STORE, ownerId, id);
 }
 
 export async function removeLessonRecord(ownerId: string, id: string) {
+  if (usesCloudStudy(ownerId)) return (await import("./cloudStudy")).removeCloudLesson(ownerId, id);
   const db = await openDB();
   try {
     const tx = db.transaction(LESSON_STORE, "readwrite");
@@ -473,6 +495,25 @@ export async function removeLessonRecord(ownerId: string, id: string) {
   } finally {
     db.close();
   }
+}
+
+export async function importLocalStudyRecords(ownerId: string, includeGuest: boolean) {
+  if (!usesCloudStudy(ownerId)) throw new Error("请登录后使用云端学习记录。");
+  const cloud = await import("./cloudStudy");
+  const sources = includeGuest ? [ownerId, GUEST_OWNER_ID] : [ownerId];
+  let count = 0;
+  for (const source of sources) {
+    const [vocab, wrong, lessons] = await Promise.all([
+      getAllByOwner<VocabItem>(VOCAB_STORE, source),
+      getAllByOwner<WrongAnswerItem>(WRONG_ANSWER_STORE, source),
+      getAllByOwner<LessonRecord>(LESSON_STORE, source),
+    ]);
+    for (const item of vocab) await cloud.saveCloudVocab({ ...item, ownerId });
+    for (const item of wrong) await cloud.saveCloudWrongAnswer({ ...item, ownerId }, item);
+    for (const item of lessons) await cloud.saveCloudLesson({ ...item, ownerId }, true);
+    count += vocab.length + wrong.length + lessons.length;
+  }
+  return count;
 }
 
 /* ========== Guest -> User Migration ========== */
@@ -493,7 +534,7 @@ function migrateOwnerScopeInStore(store: IDBObjectStore, uid: string) {
 }
 
 export async function migrateGuestDataToUser(uid: string): Promise<void> {
-  if (!uid || uid === GUEST_OWNER_ID || typeof window === "undefined") {
+  if (cloudStudyEnabled || !uid || uid === GUEST_OWNER_ID || typeof window === "undefined") {
     return;
   }
 

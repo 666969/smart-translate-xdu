@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, LockKeyhole, Mail, Sparkles, X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { cloudStudyEnabled } from "@/lib/studyStorage";
 
 interface AuthModalProps {
   open: boolean;
@@ -145,7 +146,8 @@ export default function AuthModal({ open, onClose, onRegistered }: AuthModalProp
               </div>
               <h2 className="text-2xl font-semibold tracking-tight">{modeLabel.title}</h2>
               <p className="mt-2 max-w-sm text-sm leading-6 text-white/78">
-                QQ、163、Outlook 和学校邮箱都可以注册。登录后，本浏览器的学习记录会按账号区分。
+                QQ、163、Outlook 和学校邮箱都可以注册。
+                {cloudStudyEnabled ? " 登录后可保存学习记录到云端。" : " 登录后，本浏览器的学习记录会按账号区分。"}
               </p>
             </div>
             <button

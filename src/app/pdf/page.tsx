@@ -10,6 +10,7 @@ import { findPdfPageRequest, pdfPageTitle, resolvePdfPages, type PdfCoverage, ty
 import { buildPdfStudyNoteMarkdown, downloadMarkdownFile } from "@/lib/markdownExport";
 import { MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, MAX_PDF_BYTES, MAX_SCAN_PAGES, MAX_SCAN_REQUEST_BYTES } from "@/lib/studyLimits";
 import { useLesson } from "@/hooks/useLesson";
+import { studySaveError, usesCloudStudy } from "@/lib/studyStorage";
 
 type DocumentAnswer = { reply: string; sources?: PdfSource[] };
 type SummaryAnswer = { summary: string; coverage: PdfCoverage };
@@ -74,6 +75,7 @@ export default function PdfPage() {
   const [summaryError, setSummaryError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [pageInput, setPageInput] = useState("");
+  const [pendingPdfRecord, setPendingPdfRecord] = useState<LessonRecord | null>(null);
   const documentRef = useRef<AbortController | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const chatBody = useRef<HTMLDivElement>(null);
@@ -119,6 +121,7 @@ export default function PdfPage() {
     setImageMode(false);
     setScanPageSelection("");
     setPageInput("");
+    setPendingPdfRecord(null);
     setIsExtracting(false);
   };
 
@@ -143,16 +146,24 @@ export default function PdfPage() {
       setFeedback("请选择 30 MB 以内的有效 PDF。");
       return;
     }
+    const record = saved ?? pendingPdfRecord;
+    const prior = record?.pdf;
+    if (!saved && pendingPdfRecord && prior &&
+        (file.name !== (prior.fileName ?? pendingPdfRecord.title) ||
+          (typeof prior.fileSize === "number" && file.size !== prior.fileSize))) {
+      setFeedback("请选择与这份笔记对应的原始 PDF。");
+      return;
+    }
     const signal = startDocument();
     releaseCurrent(file);
-    const prior = saved?.pdf;
+    setPendingPdfRecord(null);
     setPdfFile(file);
     setPdfUrl(URL.createObjectURL(file));
     setPdfPages([]);
     setPageCount(0);
     setPdfExtractStatus("idle");
     setPdfExtractReason(null);
-    setDetails({ ...emptyPdfDetails, ownerId, activePage: prior?.page ?? 1, coverage: prior?.coverage ?? null, recordId: saved?.id });
+    setDetails({ ...emptyPdfDetails, ownerId, activePage: prior?.page ?? 1, coverage: prior?.coverage ?? null, recordId: record?.id });
     setSummary(prior?.summary ?? null);
     setChatMessages(prior?.messages ?? []);
     setChatInput("");
@@ -175,7 +186,7 @@ export default function PdfPage() {
         labels: result.labels,
       }));
       setIsExtracting(false);
-      if (result.status === "text_ready" && !saved) {
+      if (result.status === "text_ready" && !record) {
         void runSummary(result.pages, result.labels, signal);
       }
     } catch {
@@ -187,7 +198,8 @@ export default function PdfPage() {
   };
 
   const restore = useEffectEvent(async (signal: AbortSignal) => {
-    if (details.ownerId && details.ownerId !== ownerId) resetDocument();
+    if ((details.ownerId && details.ownerId !== ownerId) ||
+        (pendingPdfRecord && pendingPdfRecord.ownerId !== ownerId)) resetDocument();
     const recordId = new URLSearchParams(window.location.search).get("lessonPdf");
     if (recordId) {
       // The URL is only a hand-off from the lesson archive. Subsequent route visits use this workspace.
@@ -195,7 +207,12 @@ export default function PdfPage() {
       try {
         const record = await getLessonRecord(ownerId, recordId);
         if (signal.aborted) return;
-        if (record?.pdf) await loadPdf(record.pdf.file, record);
+        if (record?.pdf?.file) await loadPdf(record.pdf.file, record);
+        else if (record?.pdf) {
+          resetDocument();
+          setPendingPdfRecord(record);
+          setFeedback("已取回云端笔记。重新选择原始 PDF 后可继续翻页和提问。");
+        }
         else setFeedback("当前账号找不到这份课程记录。");
       } catch {
         if (!signal.aborted) setFeedback("暂时无法打开课程记录。");
@@ -319,10 +336,12 @@ export default function PdfPage() {
       });
       if (!signal?.aborted) {
         setDetails((previous) => ({ ...previous, recordId: id }));
-        setFeedback(lesson ? "已保存到「" + lesson + "」。" : "已保存到笔记本的未分类课程档案。");
+        setFeedback(usesCloudStudy(ownerId)
+          ? "文字笔记已保存到云端课程档案。"
+          : lesson ? "已保存到「" + lesson + "」。" : "已保存到笔记本的未分类课程档案。");
       }
-    } catch {
-      if (!signal?.aborted) setFeedback("保存失败，请检查浏览器的本地存储空间。");
+    } catch (error) {
+      if (!signal?.aborted) setFeedback(studySaveError(error, ownerId));
     } finally {
       if (!signal?.aborted) setIsSaving(false);
     }
@@ -401,8 +420,14 @@ export default function PdfPage() {
                   if (file && !authLoading) void loadPdf(file);
                 }}>
                 <FileUp className="text-violet-600" size={34} />
-                <p className="text-sm text-text-muted">拖入 PDF，或从本机选择课件。</p>
+                <p className="text-sm text-text-muted">
+                  {pendingPdfRecord ? "请选择原件 " + (pendingPdfRecord.pdf?.fileName ?? pendingPdfRecord.title) : "拖入 PDF，或从本机选择课件。"}
+                </p>
                 <button className={button} disabled={authLoading} onClick={() => fileInput.current?.click()}>选择 PDF 文件</button>
+                {pendingPdfRecord && <button className="text-xs text-text-muted underline" onClick={() => {
+                  setPendingPdfRecord(null);
+                  setFeedback("");
+                }}>阅读另一份 PDF</button>}
               </div>
             )}
             <input ref={fileInput} type="file" accept=".pdf,application/pdf" className="hidden" onChange={(event) => {

@@ -14,6 +14,7 @@ import type { KeywordItem } from "./KeywordGlossary";
 import type { PdfExtractStatus } from "@/lib/pdfParser";
 import type { PdfCoverage, PdfSource } from "@/lib/pdfNavigation";
 import type { TranslationLayoutBlock } from "@/lib/translationLayout";
+import type { StudyItemId } from "@/lib/db";
 
 interface SessionChatMessage {
   role: "user" | "assistant";
@@ -112,10 +113,10 @@ interface NotebookSessionState {
   setTab: Dispatch<SetStateAction<NotebookTab>>;
   isReviewing: boolean;
   setIsReviewing: Dispatch<SetStateAction<boolean>>;
-  requizItemId: number | null;
-  setRequizItemId: Dispatch<SetStateAction<number | null>>;
-  flippedCardIds: number[];
-  setFlippedCardIds: Dispatch<SetStateAction<number[]>>;
+  requizItemId: StudyItemId | null;
+  setRequizItemId: Dispatch<SetStateAction<StudyItemId | null>>;
+  flippedCardIds: StudyItemId[];
+  setFlippedCardIds: Dispatch<SetStateAction<StudyItemId[]>>;
 }
 
 interface AppSessionValue {
@@ -164,8 +165,8 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
 
   const [notebookTab, setNotebookTab] = useState<NotebookTab>("vocab");
   const [notebookIsReviewing, setNotebookIsReviewing] = useState(false);
-  const [notebookRequizItemId, setNotebookRequizItemId] = useState<number | null>(null);
-  const [notebookFlippedCardIds, setNotebookFlippedCardIds] = useState<number[]>([]);
+  const [notebookRequizItemId, setNotebookRequizItemId] = useState<StudyItemId | null>(null);
+  const [notebookFlippedCardIds, setNotebookFlippedCardIds] = useState<StudyItemId[]>([]);
 
   const value = useMemo<AppSessionValue>(
     () => ({

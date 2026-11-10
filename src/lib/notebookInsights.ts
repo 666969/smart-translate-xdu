@@ -1,4 +1,4 @@
-import type { VocabItem, WrongAnswerItem } from "@/lib/db";
+import type { StudyItemId, VocabItem, WrongAnswerItem } from "@/lib/db";
 
 export interface NotebookDashboardActivityDay {
   dateKey: string;
@@ -22,7 +22,7 @@ export interface NotebookDashboardStats {
 }
 
 export interface SprintPackTerm {
-  id: number | null;
+  id: StudyItemId | null;
   termFr: string;
   termZh: string;
   definitionZh: string;
@@ -31,7 +31,7 @@ export interface SprintPackTerm {
 }
 
 export interface SprintPackWrongAnswer {
-  id: number | null;
+  id: StudyItemId | null;
   questionSummary: string;
   wrongOption: string;
   answerZh: string;

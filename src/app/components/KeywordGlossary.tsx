@@ -6,6 +6,7 @@ import SpeakButton from "./SpeakButton";
 import MarkdownRenderer from "./MarkdownRenderer";
 import { addVocab, isVocabExists } from "@/lib/db";
 import { useLesson } from "@/hooks/useLesson";
+import { studySaveError } from "@/lib/studyStorage";
 
 export interface KeywordItem {
   term_fr: string;
@@ -88,6 +89,8 @@ function CollectButton({ item }: { item: KeywordItem }) {
   const term = language === "en" ? item.term_en! : item.term_fr;
   const [saved, setSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -108,7 +111,9 @@ function CollectButton({ item }: { item: KeywordItem }) {
   }, [term, ownerId, lesson, language]);
 
   const handleCollect = useCallback(async () => {
-    if (saved) return;
+    if (saved || saving) return;
+    setSaving(true);
+    setSaveError("");
     try {
       const exists = await isVocabExists(ownerId, term, lesson, language);
       if (exists) {
@@ -126,16 +131,18 @@ function CollectButton({ item }: { item: KeywordItem }) {
       setSaved(true);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 2000);
-    } catch (e) {
-      console.error("Failed to save vocab:", e);
+    } catch (error) {
+      setSaveError(studySaveError(error, ownerId));
+    } finally {
+      setSaving(false);
     }
-  }, [item, ownerId, saved, term, language, lesson]);
+  }, [item, ownerId, saved, saving, term, language, lesson]);
 
   return (
     <div className="relative">
       <button
         onClick={handleCollect}
-        disabled={loading}
+        disabled={loading || saving}
         className={`transition-all duration-200 ${
           saved
             ? "text-amber-500"
@@ -150,6 +157,7 @@ function CollectButton({ item }: { item: KeywordItem }) {
           已收藏到生词本 ⭐
         </div>
       )}
+      {saveError && <p role="alert" className="mt-1 max-w-44 text-xs text-rose-700">{saveError}</p>}
     </div>
   );
 }

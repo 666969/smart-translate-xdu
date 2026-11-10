@@ -6,6 +6,7 @@ import Header from "./Header";
 import { useLesson } from "@/hooks/useLesson";
 import { glossaryData } from "@/data/glossaryData";
 import { saveLessonRecord } from "@/lib/db";
+import { cloudStudyEnabled, studySaveError, usesCloudStudy } from "@/lib/studyStorage";
 import { captureClassroomAudio } from "@/lib/classroomAudio";
 import { buildLiveSessionMarkdown, downloadMarkdownFile } from "@/lib/markdownExport";
 
@@ -84,6 +85,7 @@ function LiveSession({ ownerId, lesson, loading }) {
   const [error, setError] = useState("");
   const [translationIssue, setTranslationIssue] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [saveNotice, setSaveNotice] = useState("");
   const [follow, setFollow] = useState(true);
   const [showTabGuide, setShowTabGuide] = useState(false);
   const [pendingAudio, setPendingAudio] = useState(0);
@@ -119,24 +121,38 @@ function LiveSession({ ownerId, lesson, loading }) {
   }, [subtitles]);
 
   function writeRecord(run) {
-    if (!run?.lines.length) return;
+    if (!run?.lines.length || (cloudStudyEnabled && !usesCloudStudy(run.ownerId))) return;
+    if (run.saveTimer) {
+      window.clearTimeout(run.saveTimer);
+      run.saveTimer = null;
+    }
+    const revision = (run.saveRevision ?? 0) + 1;
+    run.saveRevision = revision;
+    const updatedAt = Math.max(Date.now(), (run.lastWriteAt ?? 0) + 1);
+    run.lastWriteAt = updatedAt;
     const note = snapshot(run, false);
     void saveLessonRecord({
       id: run.id, ownerId: run.ownerId, lesson: run.lesson, title: run.title, kind: "live",
-      updatedAt: Date.now(), markdown: buildLiveSessionMarkdown(note),
-    }).catch(() => {
-      if (runRef.current === run && !run.controller.signal.aborted) {
-        setSaveError("课堂记录未能写入浏览器，请先导出备份。");
+      updatedAt, markdown: buildLiveSessionMarkdown(note),
+    }).then(() => {
+      if (runRef.current === run && revision === run.saveRevision && !run.controller.signal.aborted) {
+        setSaveError("");
+        if (usesCloudStudy(run.ownerId)) setSaveNotice("字幕已保存到云端。");
+      }
+    }).catch((error) => {
+      if (runRef.current === run && revision === run.saveRevision && !run.controller.signal.aborted) {
+        setSaveNotice("");
+        setSaveError(studySaveError(error, run.ownerId));
       }
     });
   }
 
   function scheduleRecord(run) {
-    if (run.saveTimer) return;
+    if (run.saveTimer || (cloudStudyEnabled && !usesCloudStudy(run.ownerId))) return;
     run.saveTimer = window.setTimeout(() => {
       run.saveTimer = null;
       writeRecord(run);
-    }, 400);
+    }, usesCloudStudy(run.ownerId) ? 20_000 : 400);
   }
 
   function publish(run) {
@@ -169,6 +185,7 @@ function LiveSession({ ownerId, lesson, loading }) {
     setSubtitles([]);
     setInsights([]);
     setSaveError("");
+    setSaveNotice("");
     return run;
   }
 
@@ -394,6 +411,7 @@ function LiveSession({ ownerId, lesson, loading }) {
     setError("");
     setTranslationIssue("");
     setSaveError("");
+    setSaveNotice("");
     autoScrollRef.current = true;
     setFollow(true);
   }
@@ -414,7 +432,12 @@ function LiveSession({ ownerId, lesson, loading }) {
       <main className="mx-auto max-w-[1440px] space-y-4 px-4 py-6 lg:px-10">
         <section className="rounded-2xl border border-card-border bg-white p-4 lg:p-5">
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Mic className="text-primary" />随堂同传</h1>
-          <p className="mt-2 text-sm text-text-muted">先显示法语或英语原文，再补中文字幕。完整文字记录会保存在当前浏览器的课程档案里。</p>
+          <p className="mt-2 text-sm text-text-muted">
+            {usesCloudStudy(ownerId)
+              ? "课堂文字记录每 20 秒保存到云端，也可手动保存。"
+              : cloudStudyEnabled ? "可以先以访客身份跟听，登录后保存文字记录到云端。"
+                : "先显示法语或英语原文，再补中文字幕。文字记录会保存到本浏览器的课程档案。"}
+          </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button className={button} aria-pressed={inputSource === "mic"} disabled={busy} onClick={() => setInputSource("mic")}><Mic size={16} />麦克风</button>
             <button className={button} aria-pressed={inputSource === "tab"} disabled={busy || !canShare} onClick={() => setInputSource("tab")}><Monitor size={16} />标签页音频</button>
@@ -432,6 +455,9 @@ function LiveSession({ ownerId, lesson, loading }) {
             <button className={button} disabled={!subtitles.length} onClick={() => {
               if (runRef.current) downloadMarkdownFile("智译西电_随堂同传", buildLiveSessionMarkdown(snapshot(runRef.current, isListening)));
             }}><Download size={16} />导出记录</button>
+            {usesCloudStudy(ownerId) && <button className={button} disabled={!subtitles.length} onClick={() => {
+              if (runRef.current) writeRecord(runRef.current);
+            }}>保存字幕到云端</button>}
             <button className={button} disabled={busy || !subtitles.length} onClick={newSession}>开始新记录</button>
           </div>
           {capabilities && !canShare && <p className="mt-2 text-xs text-text-muted">
@@ -442,6 +468,7 @@ function LiveSession({ ownerId, lesson, loading }) {
           {error && <p role="alert" className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertCircle size={16} className="mt-0.5 shrink-0" />{error}</p>}
           {translationIssue && <p role="status" className="mt-2 text-sm text-rose-700">{translationIssue}</p>}
           {saveError && <p role="alert" className="mt-2 text-sm text-rose-700">{saveError}</p>}
+          {saveNotice && <p role="status" className="mt-2 text-sm text-emerald-700">{saveNotice}</p>}
         </section>
 
         {showTabGuide && <section className="rounded-2xl border border-card-border bg-white p-4">

@@ -17,6 +17,7 @@ import Header from "./components/Header";
 import { BookOpen, Save } from "lucide-react";
 import { useLesson } from "@/hooks/useLesson";
 import { saveLessonRecord } from "@/lib/db";
+import { studySaveError, usesCloudStudy } from "@/lib/studyStorage";
 import { buildLearningNoteMarkdown } from "@/lib/markdownExport";
 import { IMAGE_MIME_TYPES, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, MAX_IMAGE_BYTES, MAX_IMAGE_COUNT, MAX_SNIPPET_CHARS } from "@/lib/studyLimits";
 
@@ -482,9 +483,11 @@ export default function Home() {
         id, ownerId, lesson, kind: "translation", markdown, updatedAt: Date.now(),
         title: mode === "snippet" ? snippetFile?.name || "片段速译" : "课件截图精读",
       });
-      setSaveNotice(lesson ? "已保存到「" + lesson + "」。" : "已保存到笔记本的未分类课程档案。");
-    } catch {
-      setSaveNotice("保存失败，请检查浏览器的存储空间。");
+      setSaveNotice(usesCloudStudy(ownerId)
+        ? "已保存到云端课程档案。"
+        : lesson ? "已保存到「" + lesson + "」。" : "已保存到笔记本的未分类课程档案。");
+    } catch (error) {
+      setSaveNotice(studySaveError(error, ownerId));
     } finally {
       setIsSaving(false);
     }
