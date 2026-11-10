@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect, lazy, Suspense } from "react";
+import { useState, useRef, useEffect, useEffectEvent, lazy, Suspense } from "react";
 import type { KeywordItem } from "./components/KeywordGlossary";
 import { normalizeTranslationLayout } from "@/lib/translationLayout";
 import { useAppSession } from "./components/AppSessionProvider";
@@ -14,9 +14,15 @@ const TextbookTranslationRenderer = lazy(
   () => import("./components/TextbookTranslationRenderer")
 );
 import Header from "./components/Header";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Save } from "lucide-react";
+import { useLesson } from "@/hooks/useLesson";
+import { saveLessonRecord } from "@/lib/db";
+import { buildLearningNoteMarkdown } from "@/lib/markdownExport";
+import { IMAGE_MIME_TYPES, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, MAX_IMAGE_BYTES, MAX_IMAGE_COUNT, MAX_SNIPPET_CHARS } from "@/lib/studyLimits";
 
 /* ========== Types ========== */
+
+type TranslateTask = "quick" | "study" | "mindmap" | "quiz";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -63,13 +69,12 @@ function normalizeKeywordItems(value: unknown): KeywordItem[] {
           ? record.definition_zh.trim()
           : "";
 
-      if (!term_fr || !term_zh || !definition_zh) {
-        return null;
-      }
-
-      return { term_fr, term_zh, definition_zh };
+      const term_en = typeof record.term_en === "string" ? record.term_en.trim() : "";
+      if ((!term_fr && !term_en) || !term_zh || !definition_zh) return null;
+      const language = record.language === "en" ? "en" as const : "fr" as const;
+      return { term_fr, term_en, language, term_zh, definition_zh };
     })
-    .filter((item): item is KeywordItem => Boolean(item));
+    .filter((item) => item !== null);
 }
 
 /* ========== SVG Icon Components ========== */
@@ -219,6 +224,7 @@ function CloseIcon() {
 
 export default function Home() {
   const { home } = useAppSession();
+  const { ownerId, lesson, loading: authLoading } = useLesson();
   const {
     mode,
     setMode,
@@ -242,6 +248,10 @@ export default function Home() {
     setChatMessage,
     chatMessages,
     setChatMessages,
+    originalTextResult,
+    setOriginalTextResult,
+    sourceLanguage,
+    setSourceLanguage,
     translationResult,
     setTranslationResult,
     translationLayoutResult,
@@ -260,7 +270,13 @@ export default function Home() {
     setErrorMessage,
   } = home;
   const [isChatLoading, setIsChatLoading] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [loadingTask, setLoadingTask] = useState<TranslateTask | null>(null);
+  const isLoading = loadingTask !== null;
+  const [saveNotice, setSaveNotice] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const translationRequest = useRef<AbortController | null>(null);
+  const notes = useRef<Partial<Record<"snippet" | "document", string>>>({});
+  useEffect(() => () => translationRequest.current?.abort(), []);
   const [loadingElapsed, setLoadingElapsed] = useState(0);
   const snippetFileInputRef = useRef<HTMLInputElement>(null);
   const documentFileInputRef = useRef<HTMLInputElement>(null);
@@ -286,181 +302,193 @@ export default function Home() {
   }, [chatMessages, isChatLoading]);
 
   const handleModeChange = (nextMode: "snippet" | "document") => {
+    if (mode === nextMode) return;
+    translationRequest.current?.abort();
+    setLoadingTask(null);
     setMode(nextMode);
     setErrorMessage(null);
+    setSaveNotice("");
   };
 
-  const openSnippetUpload = () => {
-    snippetFileInputRef.current?.click();
-  };
-
-  const openDocumentUpload = () => {
-    documentFileInputRef.current?.click();
-  };
-
-  const fillDemoSnippetText = () => {
-    setSnippetText(DEMO_SNIPPET_TEXT);
+  function invalidateInput(nextMode: "snippet" | "document") {
+    translationRequest.current?.abort();
+    setLoadingTask(null);
     setErrorMessage(null);
-  };
-
-  const handleSnippetFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (snippetPreviewUrl) {
-      URL.revokeObjectURL(snippetPreviewUrl);
+    setSaveNotice("");
+    delete notes.current[nextMode];
+    if (nextMode === "snippet") {
+      setOriginalTextResult(null);
+      setSourceLanguage(null);
+      setTranslationResult(null);
+      setTranslationLayoutResult([]);
+      setAnalysisResult(null);
+      setKeywordsResult(null);
+      setKeywordItemsResult([]);
+      setChatMessages([]);
+    } else {
+      setMermaidData(null);
+      setQuizData(null);
     }
-    setSnippetFile(file);
-    setSnippetPreviewUrl(URL.createObjectURL(file));
-    setErrorMessage(null);
-    e.target.value = "";
-  };
+  }
 
-  const handleDocumentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
+  const openSnippetUpload = () => snippetFileInputRef.current?.click();
+  const openDocumentUpload = () => documentFileInputRef.current?.click();
+  function changeSnippetText(value: string) {
+    invalidateInput("snippet");
+    setSnippetText(value);
+  }
+  const fillDemoSnippetText = () => changeSnippetText(DEMO_SNIPPET_TEXT);
 
-    const remainingSlots = Math.max(0, 5 - documentFiles.length);
-    if (remainingSlots === 0) {
-      setErrorMessage("最多上传 5 张课件截图");
-      e.target.value = "";
+  function acceptImages(files: File[], nextMode: "snippet" | "document") {
+    if (!files.length) return;
+    if (files.some((file) => !file.size || !IMAGE_MIME_TYPES.includes(file.type))) {
+      setErrorMessage("请上传 PNG、JPEG、WebP 或 GIF 图片。");
       return;
     }
-
-    const acceptedFiles = files.slice(0, remainingSlots);
-    const acceptedUrls = acceptedFiles.map((file) => URL.createObjectURL(file));
-
-    setDocumentFiles((prev) => [...prev, ...acceptedFiles]);
-    setDocumentPreviewUrls((prev) => [...prev, ...acceptedUrls]);
-
-    if (files.length > remainingSlots) {
-      setErrorMessage(`最多上传 5 张课件截图，已添加前 ${remainingSlots} 张`);
+    const remaining = nextMode === "snippet" ? 1 : MAX_IMAGE_COUNT - documentFiles.length;
+    if (remaining <= 0) {
+      setErrorMessage("最多上传 5 张课件截图。");
+      return;
+    }
+    const selected = files.slice(0, remaining);
+    const existing = nextMode === "snippet" ? 0 : documentFiles.reduce((size, file) => size + file.size, 0);
+    if (existing + selected.reduce((size, file) => size + file.size, 0) > MAX_IMAGE_BYTES) {
+      setErrorMessage("截图总大小需在 4 MB 以内，请裁剪或压缩后再试。");
+      return;
+    }
+    invalidateInput(nextMode);
+    if (nextMode === "snippet") {
+      if (snippetPreviewUrl) URL.revokeObjectURL(snippetPreviewUrl);
+      setSnippetFile(selected[0]);
+      setSnippetPreviewUrl(URL.createObjectURL(selected[0]));
     } else {
-      setErrorMessage(null);
+      const previewUrls = selected.map((file) => URL.createObjectURL(file));
+      setDocumentFiles((previous) => [...previous, ...selected]);
+      setDocumentPreviewUrls((previous) => [...previous, ...previewUrls]);
     }
-    e.target.value = "";
-  };
+    if (selected.length < files.length) setErrorMessage("已按当前模式的图片数量上限添加截图。");
+  }
 
-  const handleRemoveSnippetImage = useCallback(() => {
-    if (snippetPreviewUrl) {
-      URL.revokeObjectURL(snippetPreviewUrl);
-    }
+  const pasteImages = useEffectEvent((event: ClipboardEvent) => {
+    if (event.target instanceof HTMLElement && event.target.id === "chat-input") return;
+    const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
+    if (!files.length) return;
+    event.preventDefault();
+    acceptImages(files, mode);
+  });
+  useEffect(() => {
+    const listener = (event: ClipboardEvent) => pasteImages(event);
+    document.addEventListener("paste", listener);
+    return () => document.removeEventListener("paste", listener);
+  }, []);
+
+  function handleSnippetFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    acceptImages(Array.from(event.target.files ?? []), "snippet");
+    event.target.value = "";
+  }
+
+  function handleDocumentFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    acceptImages(Array.from(event.target.files ?? []), "document");
+    event.target.value = "";
+  }
+
+  function handleRemoveSnippetImage() {
+    invalidateInput("snippet");
+    if (snippetPreviewUrl) URL.revokeObjectURL(snippetPreviewUrl);
     setSnippetFile(null);
     setSnippetPreviewUrl(null);
+  }
 
-    if (snippetFileInputRef.current) {
-      snippetFileInputRef.current.value = "";
-    }
-  }, [setSnippetFile, setSnippetPreviewUrl, snippetPreviewUrl]);
+  function handleRemoveDocumentImage(index: number) {
+    invalidateInput("document");
+    const url = documentPreviewUrls[index];
+    if (url) URL.revokeObjectURL(url);
+    setDocumentFiles((previous) => previous.filter((_, position) => position !== index));
+    setDocumentPreviewUrls((previous) => previous.filter((_, position) => position !== index));
+  }
 
-  const handleRemoveDocumentImage = useCallback((indexToRemove: number) => {
-    const urlToRemove = documentPreviewUrls[indexToRemove];
-    if (urlToRemove) {
-      URL.revokeObjectURL(urlToRemove);
-    }
-
-    setDocumentFiles((prev) => prev.filter((_, i) => i !== indexToRemove));
-    setDocumentPreviewUrls((prev) => prev.filter((_, i) => i !== indexToRemove));
-
-    if (documentFileInputRef.current) {
-      documentFileInputRef.current.value = "";
-    }
-  }, [documentPreviewUrls, setDocumentFiles, setDocumentPreviewUrls]);
-
-  const handleTranslate = async () => {
-    if (mode === "snippet" && !snippetText && !snippetFile) {
-      setErrorMessage("请输入外文文本或上传课件截图");
+  const handleTranslate = async (task: TranslateTask) => {
+    if (isLoading) return;
+    if (mode === "snippet" && !snippetText.trim() && !snippetFile) {
+      setErrorMessage("请输入外文文本、粘贴或上传一张课件截图。");
       return;
     }
-    if (mode === "document" && documentFiles.length === 0) {
-      setErrorMessage("请至少上传 1 张课件截图");
+    if (mode === "document" && !documentFiles.length) {
+      setErrorMessage("请粘贴或上传至少一张课件截图。");
       return;
     }
-
-    setIsLoading(true);
+    const request = new AbortController();
+    translationRequest.current?.abort();
+    translationRequest.current = request;
+    setLoadingTask(task);
     setErrorMessage(null);
-    setTranslationResult(null);
-    setTranslationLayoutResult([]);
-    setAnalysisResult(null);
-    setKeywordsResult(null);
-    setKeywordItemsResult([]);
-    setMermaidData(null);
-    setQuizData(null);
+    setSaveNotice("");
 
     try {
-      const formData = new FormData();
-      formData.append("mode", mode);
-      formData.append("deep_mode", deepMode ? "true" : "false");
-      
+      const form = new FormData();
+      form.append("mode", mode);
+      form.append("task", task);
+      form.append("deep_mode", deepMode ? "true" : "false");
+      if (sourceLanguage) form.append("language", sourceLanguage);
       if (mode === "snippet") {
-        if (snippetText) formData.append("text", snippetText);
-        if (snippetFile) formData.append("image", snippetFile);
+        if (snippetText.trim()) form.append("text", snippetText.trim());
+        if (snippetFile) form.append("image", snippetFile);
       } else {
-        documentFiles.forEach((file) => {
-          formData.append("image", file);
-        });
+        documentFiles.forEach((file) => form.append("image", file));
       }
-
-      const requestTimeoutMs = getTranslateTimeoutMs({
-        mode,
-        hasSnippetImage: Boolean(snippetFile),
-        documentImageCount: documentFiles.length,
+      const timeout = getTranslateTimeoutMs({
+        mode, hasSnippetImage: Boolean(snippetFile), documentImageCount: documentFiles.length,
       });
-
-      // 第三方 Gemini 中转在图片任务上通常明显更慢，前端超时需高于后端。
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
-
       const response = await fetch("/api/translate", {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
+        method: "POST", body: form,
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(timeout)]),
       });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "请求失败");
-      }
-
-      const data = await response.json();
-      
-      // Decode JSON fields based on the modes
-      if (mode === "document") {
-        setTranslationResult(null);
-        setTranslationLayoutResult([]);
-        setAnalysisResult(null);
-        setKeywordsResult(null);
-        setKeywordItemsResult([]);
-        
-        setMermaidData(data.mermaid || null);
-        setQuizData(data.quiz || null);
-      } else {
-        setTranslationResult(data.translation || null);
-        setTranslationLayoutResult(
-          normalizeTranslationLayout(data.translation_layout)
-        );
-        setAnalysisResult(data.analysis || null);
+      const data = await response.json().catch(() => null);
+      if (request.signal.aborted) return;
+      if (!response.ok || !data) throw new Error(data?.error || "请求失败，请重试。");
+      if (task === "quick") {
+        setOriginalTextResult(data.original_text || snippetText || null);
+        setSourceLanguage(data.source_language === "en" || data.source_language === "fr" ? data.source_language : null);
+        setTranslationResult(data.translation);
+        setTranslationLayoutResult(normalizeTranslationLayout(data.translation_layout));
+      } else if (task === "study") {
+        setAnalysisResult(data.analysis);
         setKeywordsResult(data.keywords || null);
         setKeywordItemsResult(normalizeKeywordItems(data.keyword_items));
-        
-        setMermaidData(null);
-        setQuizData(null);
-      }
-
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        setErrorMessage(
-          "请求超时，当前 Gemini 中转响应较慢。你可以稍后重试，或改用更快的 Flash 模型。"
-        );
+      } else if (task === "mindmap") {
+        setMermaidData(data.mermaid);
       } else {
-        setErrorMessage(err instanceof Error ? err.message : "请求失败，请稍后重试");
+        setQuizData(data.quiz);
+        if (data.incomplete) setErrorMessage("已展示通过校验的题目。需要补足时，可重新生成小测。");
       }
+    } catch (error) {
+      if (!request.signal.aborted) setErrorMessage(error instanceof DOMException && error.name === "TimeoutError"
+        ? "请求超时，可稍后重试或减少截图。"
+        : error instanceof Error ? error.message : "请求失败，请重试。");
     } finally {
-      setIsLoading(false);
+      if (!request.signal.aborted) setLoadingTask(null);
     }
   };
+
+  async function saveStudyNote() {
+    if (isSaving || authLoading) return;
+    const id = notes.current[mode] ??= crypto.randomUUID();
+    const markdown = buildLearningNoteMarkdown(mode === "snippet"
+      ? { mode, originalText: originalTextResult, translation: translationResult, analysis: analysisResult, keywords: keywordsResult }
+      : { mode, mermaid: mermaidData, quiz: quizData });
+    setIsSaving(true);
+    try {
+      await saveLessonRecord({
+        id, ownerId, lesson, kind: "translation", markdown, updatedAt: Date.now(),
+        title: mode === "snippet" ? snippetFile?.name || "片段速译" : "课件截图精读",
+      });
+      setSaveNotice(lesson ? "已保存到「" + lesson + "」。" : "已保存到笔记本的未分类课程档案。");
+    } catch {
+      setSaveNotice("保存失败，请检查浏览器的存储空间。");
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   // ===== 发送聊天消息 =====
   const handleChatSend = async () => {
@@ -478,10 +506,12 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: updatedMessages,
+          messages: updatedMessages.slice(-MAX_CHAT_MESSAGES).map(({ role, content }) => ({
+            role, content: content.slice(0, MAX_CHAT_MESSAGE_CHARS),
+          })),
           deepMode,
           context: {
-            originalText: snippetText || undefined,
+            originalText: originalTextResult || snippetText || undefined,
             translation: translationResult || undefined,
             analysis: analysisResult || undefined,
           },
@@ -545,6 +575,15 @@ export default function Home() {
 
       {/* ===== Main Content ===== */}
       <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 lg:px-10 pb-28">
+        {(mode === "snippet" ? translationResult : mermaidData || quizData?.length) ? (
+          <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+            {saveNotice && <span role="status" className="text-xs text-text-muted">{saveNotice}</span>}
+            <button type="button" onClick={() => void saveStudyNote()} disabled={isSaving || authLoading}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-card-border bg-white px-3 py-2 text-xs text-primary disabled:opacity-50">
+              <Save size={15} />{isSaving ? "保存中" : "保存到本节课"}
+            </button>
+          </div>
+        ) : null}
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-6 items-start">
           <div
             className={`animate-fade-in-up-delay-1 gap-5 ${
@@ -594,8 +633,8 @@ export default function Home() {
                     </h2>
                     <p className="text-xs text-text-muted">
                       {mode === "snippet"
-                        ? "支持文本及单张图片混合识别，图片上传后将自动切换为大图预览"
-                        : "支持上传多张连续课件截图（最多 5 张）"}
+                        ? "支持文本、截图上传与 Ctrl+V 粘贴"
+                        : "支持上传或粘贴连续课件截图（最多 5 张，总计 4 MB）"}
                     </p>
                   </div>
                 </div>
@@ -610,10 +649,10 @@ export default function Home() {
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-card-border/80 bg-white/75 px-4 py-3">
                   <div>
                     <p className="text-xs font-semibold tracking-[0.08em] text-text-muted">
-                      模型模式
+                      按需学习
                     </p>
                     <p className="mt-1 text-xs text-text-light">
-                      默认使用极速模式；只有开启深度模式时才调用 Pro。
+                      {mode === "snippet" ? "先看双语对照，再按需解释原理和术语。" : "分别生成知识导图和三语小测。"}
                     </p>
                   </div>
                   <div className="inline-flex items-center gap-1 rounded-full border border-card-border bg-background px-1 py-1 text-[11px] shadow-sm">
@@ -625,7 +664,7 @@ export default function Home() {
                           : "text-text-muted hover:text-foreground"
                       }`}
                     >
-                      极速模式
+                      简明讲解
                     </button>
                     <button
                       onClick={() => setDeepMode(true)}
@@ -635,7 +674,7 @@ export default function Home() {
                           : "text-text-muted hover:text-foreground"
                       }`}
                     >
-                      深度模式
+                      深入讲解
                     </button>
                   </div>
                 </div>
@@ -645,14 +684,14 @@ export default function Home() {
                 <input
                   ref={snippetFileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept={IMAGE_MIME_TYPES.join(",")}
                   className="hidden"
                   onChange={handleSnippetFileChange}
                 />
                 <input
                   ref={documentFileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept={IMAGE_MIME_TYPES.join(",")}
                   multiple
                   className="hidden"
                   onChange={handleDocumentFileChange}
@@ -665,7 +704,8 @@ export default function Home() {
                         <textarea
                           id="input-textarea"
                           value={snippetText}
-                          onChange={(e) => setSnippetText(e.target.value)}
+                          onChange={(e) => changeSnippetText(e.target.value)}
+                          maxLength={MAX_SNIPPET_CHARS}
                           placeholder="在此粘贴外文内容...&#10;例如：Le théorème de Gauss établit que le flux du champ électrique..."
                           className="h-[108px] w-full resize-none rounded-2xl border border-card-border bg-white/80 px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-text-light/70 focus:border-primary-light transition-all duration-300"
                         />
@@ -706,7 +746,7 @@ export default function Home() {
                   documentPreviewUrls.length > 0 && (
                     <div className={`grid gap-3 ${documentPreviewUrls.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
                       {documentPreviewUrls.map((url, idx) => (
-                        <div key={idx} className="relative group rounded-xl border border-card-border overflow-hidden bg-background/50">
+                        <div key={url} id={"document-image-" + (idx + 1)} className="relative group scroll-mt-28 rounded-xl border border-card-border overflow-hidden bg-background/50">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={url}
@@ -750,10 +790,15 @@ export default function Home() {
                     </div>
                   )}
 
-                  <div className="ml-auto w-full sm:w-auto">
+                  <div className="ml-auto flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+                    <button type="button" disabled={isLoading || (mode === "snippet" && !translationResult)}
+                      onClick={() => void handleTranslate(mode === "snippet" ? "study" : "quiz")}
+                      className="rounded-xl border border-primary/20 px-4 py-2 text-sm font-medium text-primary disabled:opacity-50">
+                      {mode === "snippet" ? "讲原理和术语" : "生成三语小测"}
+                    </button>
                     <button
                       id="translate-button"
-                      onClick={handleTranslate}
+                      onClick={() => void handleTranslate(mode === "snippet" ? "quick" : "mindmap")}
                       disabled={isLoading}
                       className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-light text-white text-sm font-semibold hover:shadow-lg hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
                     >
@@ -762,12 +807,12 @@ export default function Home() {
                           <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
                             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" />
                           </svg>
-                          解析中... {loadingElapsed}s
+                          {loadingTask === "study" ? "讲解生成中" : loadingTask === "quiz" ? "小测生成中" : "处理中"} · {loadingElapsed}s
                         </>
                       ) : (
                         <>
                           <SendIcon />
-                          {mode === "snippet" ? "开始速译" : "开始精读解析"}
+                          {mode === "snippet" ? "开始速译" : "生成知识导图"}
                         </>
                       )}
                     </button>
@@ -785,14 +830,14 @@ export default function Home() {
                     </span>
                     关键词速览
                   </h3>
-                  {(keywordItemsResult.length > 0 || keywordsResult) && !isLoading && (
+                  {(keywordItemsResult.length > 0 || keywordsResult) && loadingTask !== "study" && (
                     <span className="text-xs text-amber-600 bg-amber-500/10 px-2 py-1 rounded-md">
                       术语已就绪
                     </span>
                   )}
                 </div>
                 <div className="p-5 min-h-[260px] flex-1">
-                    {isLoading ? (
+                    {loadingTask === "study" && !keywordItemsResult.length ? (
                       <div className="h-full rounded-[28px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(255,251,235,0.72))] shadow-sm flex flex-col items-center justify-center gap-3 text-text-muted">
                         <div className="relative w-10 h-10">
                           <svg className="animate-spin text-amber-500/30 w-full h-full" viewBox="0 0 24 24" fill="none">
@@ -861,10 +906,11 @@ export default function Home() {
                       </span>
                       精准翻译
                     </h2>
-                    {translationResult && !isLoading && (
+                    {translationResult && loadingTask !== "quick" && (
                       <div className="flex items-center gap-2">
                         <Suspense fallback={null}>
                           <ExportButton
+                            originalText={originalTextResult}
                             translation={translationResult}
                             analysis={analysisResult}
                             keywords={keywordsResult}
@@ -879,7 +925,7 @@ export default function Home() {
                     )}
                   </div>
                   <div className="p-5 min-h-[280px] flex-1">
-                    {isLoading ? (
+                    {loadingTask === "quick" && !translationResult ? (
                       <div className="h-full flex flex-col items-center justify-center gap-4 text-text-muted">
                         <div className="relative w-12 h-12">
                           <svg className="animate-spin text-primary/30 w-full h-full" viewBox="0 0 24 24" fill="none">
@@ -911,6 +957,12 @@ export default function Home() {
                             </span>
                           </div>
                           <div className="flex-1 overflow-y-auto px-5 py-5 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.06),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
+                            {originalTextResult && <details open className="mb-4 rounded-xl border border-card-border bg-white p-3">
+                              <summary className="cursor-pointer text-sm font-medium text-primary">
+                                {sourceLanguage === "en" ? "英语原文" : sourceLanguage === "fr" ? "法语原文" : "课件原文"}
+                              </summary>
+                              <p className="mt-2 max-h-44 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-text-muted">{originalTextResult}</p>
+                            </details>}
                             <TextbookTranslationRenderer
                               layout={translationLayoutResult}
                               fallbackContent={translationResult}
@@ -941,14 +993,14 @@ export default function Home() {
                       </span>
                       深度解析
                     </h2>
-                    {analysisResult && !isLoading && (
+                    {analysisResult && loadingTask !== "study" && (
                       <span className="text-xs text-teal-600 font-medium bg-teal-500/10 px-2 py-1 rounded-md">
                         解析已就绪
                       </span>
                     )}
                   </div>
                   <div className="p-5 min-h-[320px] flex-1">
-                    {isLoading ? (
+                    {loadingTask === "study" && !analysisResult ? (
                       <div className="h-full rounded-[28px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(240,253,250,0.78))] shadow-sm flex flex-col items-center justify-center gap-4 text-text-muted">
                         <div className="relative w-12 h-12">
                           <svg className="animate-spin text-teal-500/30 w-full h-full" viewBox="0 0 24 24" fill="none">
@@ -989,7 +1041,7 @@ export default function Home() {
                         <div className="w-12 h-12 mb-3 rounded-full bg-teal-500/10 flex items-center justify-center text-teal-500">
                           <FormulaIcon />
                         </div>
-                        <p>这里会展示对原理、公式含义和知识点关系的中文解析。</p>
+                        <p>速译后点击「讲原理和术语」，查看公式含义和知识点关系。</p>
                       </div>
                     )}
                   </div>
@@ -1004,7 +1056,7 @@ export default function Home() {
                     </div>
                     <h2 className="text-base font-semibold text-foreground">解析结果</h2>
                   </div>
-                  {(mermaidData || (quizData && quizData.length > 0)) && !isLoading && (
+                  {(mermaidData || (quizData && quizData.length > 0)) && (
                     <div className="flex items-center gap-2">
                       <Suspense fallback={null}>
                         <ExportButton
@@ -1021,7 +1073,7 @@ export default function Home() {
                 </div>
 
                 <div className="flex-1 p-5 overflow-y-auto min-h-[400px]">
-                  {isLoading ? (
+                  {isLoading && !mermaidData && !quizData?.length ? (
                     <div className="flex flex-col items-center justify-center h-full gap-4 text-text-muted">
                       <div className="relative w-12 h-12">
                         <svg className="animate-spin text-primary/30 w-full h-full" viewBox="0 0 24 24" fill="none">
@@ -1054,6 +1106,7 @@ export default function Home() {
                       {quizData && quizData.length > 0 && (
                         <Suspense fallback={<div className="text-sm text-text-muted">加载小测渲染中...</div>}>
                           <DocumentQuizPanel
+                            sourceImages={documentFiles.map((file) => file.name)}
                             quizData={quizData}
                             quizLang={quizLang}
                             onQuizLangChange={setQuizLang}
@@ -1203,6 +1256,7 @@ export default function Home() {
             <div className="flex items-center gap-2 bg-background rounded-xl px-3 py-1 border border-card-border focus-within:border-primary-light transition-colors duration-200">
               <input
                 id="chat-input"
+                maxLength={MAX_CHAT_MESSAGE_CHARS}
                 type="text"
                 value={chatMessage}
                 onChange={(e) => setChatMessage(e.target.value)}

@@ -2,6 +2,10 @@
  * PDF 文本提取工具 — 基于 pdfjs-dist
  */
 
+import type { PDFDocumentProxy } from "pdfjs-dist";
+import { inferPrintedPdfLabels } from "./pdfNavigation";
+import { MAX_PDF_PAGES, MAX_PDF_TEXT_CHARS } from "./studyLimits";
+
 export type PdfExtractStatus =
   | "text_ready"
   | "scan_like"
@@ -10,6 +14,7 @@ export type PdfExtractStatus =
 
 export interface PdfParseResult {
   pages: string[];
+  labels: (string | null)[];
   fullText: string;
   pageCount: number;
   status: PdfExtractStatus;
@@ -19,16 +24,42 @@ export interface PdfParseResult {
 }
 
 let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;
+const documents = new WeakMap<File, Promise<PDFDocumentProxy>>();
 
 async function getPdfJs() {
   if (!pdfjsPromise) {
     pdfjsPromise = import("pdfjs-dist").then((pdfjs) => {
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
       return pdfjs;
+    }).catch((error) => {
+      pdfjsPromise = null;
+      throw error;
     });
   }
 
   return pdfjsPromise;
+}
+
+async function openPdf(file: File) {
+  let pending = documents.get(file);
+  if (!pending) {
+    pending = (async () => {
+      const pdfjs = await getPdfJs();
+      const data = await file.arrayBuffer();
+      return pdfjs.getDocument({ data, isEvalSupported: false }).promise;
+    })().catch((error) => {
+      documents.delete(file);
+      throw error;
+    });
+    documents.set(file, pending);
+  }
+  return pending;
+}
+
+export function releasePdf(file: File) {
+  const pending = documents.get(file);
+  documents.delete(file);
+  void pending?.then((pdf) => pdf.destroy()).catch(() => {});
 }
 
 function normalizeEffectiveTextLength(value: string) {
@@ -88,35 +119,52 @@ function determineExtractStatus(pages: string[], pageCount: number) {
   };
 }
 
-export async function extractTextFromPdf(file: File): Promise<PdfParseResult> {
+export async function extractTextFromPdf(file: File, signal?: AbortSignal): Promise<PdfParseResult> {
   try {
-    const pdfjs = await getPdfJs();
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-
-    const pages: string[] = [];
-
-    for (let i = 1; i <= pdf.numPages; i += 1) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item) => {
-          if ("str" in item) {
-            return item.str;
-          }
-          return "";
-        })
-        .join(" ")
-        .replace(/\s+/gu, " ")
-        .trim();
-      pages.push(pageText);
+    const pdf = await openPdf(file);
+    signal?.throwIfAborted();
+    if (pdf.numPages > MAX_PDF_PAGES) {
+      throw new RangeError("课件超过 " + MAX_PDF_PAGES + " 页，请拆分后上传。");
     }
 
+    const pages: string[] = [];
+    const footerCandidates: number[][] = [];
+    let textLength = 0;
+
+    for (let i = 1; i <= pdf.numPages; i += 1) {
+      signal?.throwIfAborted();
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const viewport = page.getViewport({ scale: 1 });
+      const footer: number[] = [];
+      const pageText = textContent.items
+        .map((item) => {
+          if (!("str" in item)) return "";
+          if (/^\d{1,4}$/u.test(item.str.trim())) {
+            const [x, y] = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
+            if (x >= viewport.width * 0.55 && y >= viewport.height * 0.89) footer.push(Number(item.str));
+          }
+          return item.str + (item.hasEOL ? "\n" : " ");
+        })
+        .join("")
+        .replace(/[ \t]+/gu, " ")
+        .trim();
+      textLength += pageText.length;
+      if (textLength > MAX_PDF_TEXT_CHARS) throw new RangeError("课件文字过多，请拆分后上传。");
+      pages.push(pageText);
+      footerCandidates.push(footer);
+    }
+
+    const documentLabels = await pdf.getPageLabels();
+    const numericLabels = documentLabels?.map((label) => /^\d{1,5}$/u.test(label) ? label : null);
+    const labels = numericLabels?.some((label, index) => label && label !== String(index + 1))
+      ? numericLabels : inferPrintedPdfLabels(footerCandidates);
     const fullText = pages.filter(Boolean).join("\n\n");
     const metrics = determineExtractStatus(pages, pdf.numPages);
 
     return {
       pages,
+      labels,
       fullText,
       pageCount: pdf.numPages,
       status: metrics.status,
@@ -125,9 +173,13 @@ export async function extractTextFromPdf(file: File): Promise<PdfParseResult> {
       nonEmptyPageCount: metrics.nonEmptyPageCount,
     };
   } catch (error) {
-    const classified = classifyPdfError(error);
+    if (signal?.aborted) throw error;
+    const classified = error instanceof RangeError
+      ? { status: "parse_error" as const, reason: error.message }
+      : classifyPdfError(error);
     return {
       pages: [],
+      labels: [],
       fullText: "",
       pageCount: 0,
       status: classified.status,
@@ -150,24 +202,22 @@ function dedupeAndClampPageNumbers(pageNumbers: number[], pageCount: number) {
 
 export async function renderPdfPagesToImages(
   file: File,
-  pageNumbers: number[]
+  pageNumbers: number[],
+  signal?: AbortSignal
 ) {
-  const pdfjs = await getPdfJs();
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await openPdf(file);
+  signal?.throwIfAborted();
   const safePageNumbers = dedupeAndClampPageNumbers(pageNumbers, pdf.numPages);
 
-  const targetWidth = safePageNumbers.length > 3 ? 900 : 1100;
-  const quality = safePageNumbers.length > 3 ? 0.72 : 0.8;
+  const targetWidth = safePageNumbers.length > 3 ? 900 : 1280;
+  const quality = safePageNumbers.length > 3 ? 0.72 : 0.86;
 
   const renderedPages = await Promise.all(
     safePageNumbers.map(async (pageNumber) => {
       const page = await pdf.getPage(pageNumber);
       const baseViewport = page.getViewport({ scale: 1 });
-      const scale = Math.min(
-        1.85,
-        Math.max(1.1, targetWidth / Math.max(1, baseViewport.width))
-      );
+      signal?.throwIfAborted();
+      const scale = Math.min(2, targetWidth / Math.max(1, baseViewport.width, baseViewport.height));
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       const context = canvas.getContext("2d");
@@ -181,16 +231,18 @@ export async function renderPdfPagesToImages(
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, canvas.width, canvas.height);
 
-      await page.render({
-        canvas,
-        canvasContext: context,
-        viewport,
-      }).promise;
-
-      return {
-        pageNumber,
-        imageUrl: canvas.toDataURL("image/jpeg", quality),
-      };
+      const task = page.render({ canvas, canvasContext: context, viewport });
+      const cancel = () => task.cancel();
+      signal?.addEventListener("abort", cancel, { once: true });
+      try {
+        await task.promise;
+        signal?.throwIfAborted();
+        return { pageNumber, imageUrl: canvas.toDataURL("image/jpeg", quality) };
+      } finally {
+        signal?.removeEventListener("abort", cancel);
+        canvas.width = 0;
+        canvas.height = 0;
+      }
     })
   );
 

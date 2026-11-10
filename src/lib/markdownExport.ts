@@ -1,5 +1,7 @@
 "use client";
 
+import { pdfPageTitle, type PdfCoverage, type PdfSource } from "./pdfNavigation";
+
 export interface QuizItemSnapshot {
   question_zh?: string;
   question_fr?: string;
@@ -10,6 +12,7 @@ export interface QuizItemSnapshot {
 }
 
 export interface LearningNoteSnapshot {
+  originalText?: string | null;
   translation?: string | null;
   analysis?: string | null;
   keywords?: string | null;
@@ -20,6 +23,8 @@ export interface LearningNoteSnapshot {
 
 export interface LiveSubtitleSnapshot {
   originalText: string;
+  seconds?: number;
+  marked?: boolean;
   translation?: string;
   status?: string;
 }
@@ -31,6 +36,7 @@ export interface LiveInsightSnapshot {
 }
 
 export interface LiveSessionSnapshot {
+  lesson?: string;
   inputSource: string;
   language: string;
   isListening: boolean;
@@ -48,6 +54,7 @@ export interface PdfStatusCardSnapshot {
 export interface PdfChatMessageSnapshot {
   role: "user" | "assistant";
   content: string;
+  sources?: PdfSource[];
 }
 
 export interface PdfStudyNoteSnapshot {
@@ -60,6 +67,7 @@ export interface PdfStudyNoteSnapshot {
   scanPageSelection?: string | null;
   lastResolvedPageLabel?: string | null;
   summary?: string | null;
+  coverage?: PdfCoverage | null;
   statusCard?: PdfStatusCardSnapshot | null;
   chatMessages: PdfChatMessageSnapshot[];
 }
@@ -150,6 +158,11 @@ export function buildLearningNoteMarkdown(snapshot: LearningNoteSnapshot) {
   lines.push(`> 模式：${snapshot.mode === "snippet" ? "片段速译" : "课件精读"}`);
   lines.push("");
 
+  if (snapshot.originalText) {
+    pushDivider(lines);
+    pushSection(lines, "## 课件原文", snapshot.originalText);
+  }
+
   if (snapshot.translation) {
     pushDivider(lines);
     pushSection(lines, "## 📝 精准翻译", snapshot.translation);
@@ -227,7 +240,8 @@ export function buildLiveSessionMarkdown(snapshot: LiveSessionSnapshot) {
   lines.push("");
 
   pushDivider(lines);
-  lines.push("## 🎧 双语字幕快照");
+  if (snapshot.lesson) lines.push("课节 " + snapshot.lesson, "");
+  lines.push("## 双语字幕记录");
   lines.push("");
   if (snapshot.subtitles.length === 0) {
     lines.push("当前暂无内容。");
@@ -236,7 +250,11 @@ export function buildLiveSessionMarkdown(snapshot: LiveSessionSnapshot) {
     snapshot.subtitles.forEach((item, index) => {
       lines.push(`### ${index + 1}. 字幕片段`);
       lines.push("");
-      lines.push(`- 状态：${formatSubtitleStatus(item.status)}`);
+      if (item.seconds !== undefined) {
+        const elapsed = Math.floor(item.seconds / 60) + ":" + String(item.seconds % 60).padStart(2, "0");
+        lines.push("- 课堂时间 " + elapsed + (item.marked ? " · 已标记回看" : ""));
+      }
+      lines.push("- 状态 " + (item.status === "success" ? formatSubtitleStatus(item.status) : "译文待补"));
       lines.push(`- 原文：${item.originalText}`);
       lines.push(`- 中文：${item.translation?.trim() || "当前暂无内容。"}`);
       lines.push("");
@@ -288,6 +306,10 @@ export function buildPdfStudyNoteMarkdown(snapshot: PdfStudyNoteSnapshot) {
   pushDivider(lines);
   lines.push("## 📄 摘要与解析状态");
   lines.push("");
+  if (snapshot.coverage) {
+    lines.push("摘要覆盖 " + snapshot.coverage.pages.length + " / " + snapshot.coverage.total +
+      " 页的" + (snapshot.coverage.excerpted ? "文字摘录" : "可提取文字"), "");
+  }
   if (snapshot.summary?.trim()) {
     lines.push(snapshot.summary.trim());
     lines.push("");
@@ -333,6 +355,11 @@ export function buildPdfStudyNoteMarkdown(snapshot: PdfStudyNoteSnapshot) {
       lines.push("");
       lines.push(message.content);
       lines.push("");
+      for (const source of message.sources ?? []) {
+        lines.push("- " + pdfPageTitle(source.page, source.label));
+        if (source.quote) lines.push("> " + source.quote.replace(/\n/g, "\n> "));
+      }
+      if (message.sources?.length) lines.push("");
     });
   }
 

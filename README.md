@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 智译西电
 
-## Getting Started
+面向中外合作办学学生的课件翻译、课堂字幕和课后复习网站，支持法语、英语和中文。
 
-First, run the development server:
+## 启动网站
 
-```bash
+安装依赖后，将 `.env.example` 复制为 `.env.local` 并按需填写模型和 Firebase 配置。已有 `.env.local` 时直接使用原配置。
+
+```powershell
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+浏览器打开 `http://localhost:3000`。在导航栏设置「当前课节」，即可把课件、翻译笔记、术语和错题归到同一个课节。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 在 Windows 本机启用课堂转写
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+在项目目录运行以下命令。首次会下载并校验约 60 MB 的多语种语音模型，以及 Whisper 的 Windows x64 运行文件。
 
-## Learn More
+```powershell
+.\scripts\start-local-classroom.ps1
+```
 
-To learn more about Next.js, take a look at the following resources:
+脚本会在本机同时启动网站和语音转写，关闭网站后退出转写服务。进入「随堂同传」，选法语或英语，再选择麦克风或标签页音频。共享标签页时，在浏览器选择器中勾选共享音频。音频转文字由本机处理，字幕的中文翻译走网站配置的文本模型。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+正式部署时可以配置独立的 OpenAI 兼容语音转写服务。填写 `OPENAI_TRANSCRIBE_BASE_URL`、`OPENAI_TRANSCRIBE_API_KEY` 与 `OPENAI_TRANSCRIBE_MODEL`。只有文本服务时，页面会提供浏览器原生麦克风识别，并提示标签页音频的配置状态。浏览器原生识别是否可用取决于设备、浏览器和网络。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 课件与课程档案
 
-## Deploy on Vercel
+- 片段速译支持粘贴截图，先看原文与译文，再按需生成原理解析和术语。多图精读可分别生成导图和三语小测。
+- PDF 可输入物理页码，部分课件还能识别印刷页码。点击答案下方的来源即可跳转。遇到电路图或扫描页时，选择「看图提问」。
+- 课程档案保存在当前浏览器。可从笔记本继续阅读已保存的 PDF，或回看课堂字幕和标记。支持导出 Markdown 备份。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 试用额度
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+服务端按实例限制模型请求额度。部署方若提供一个由可信反向代理覆盖的单值客户端 IP 请求头，可以设置 `AI_TRUSTED_IP_HEADER` 启用单 IP 额度，Vercel 默认使用其转发头。实例内额度在服务重启时重新计数，多实例各自计数。截图上传总量限制为 4 MB，PDF 通过浏览器本地解析，文件上限 30 MB、300 页。生成摘要和问答时，相关文本或选中页图会提交给配置的模型。

@@ -7,6 +7,7 @@ import {
 } from "@/lib/markdownExport";
 
 interface ExportButtonProps {
+  originalText?: string | null;
   translation?: string | null;
   analysis?: string | null;
   keywords?: string | null;

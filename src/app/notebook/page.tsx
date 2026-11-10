@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import {
   BookOpen,
   Star,
@@ -18,6 +18,7 @@ import {
   FileText,
 } from "lucide-react";
 import Header from "../components/Header";
+import LessonArchive from "../components/LessonArchive";
 import SpeakButton from "../components/SpeakButton";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import {
@@ -29,8 +30,10 @@ import {
   resolveWrongAnswer,
   removeWrongAnswer,
   resolveOwnerId,
+  getLessonRecords,
+  removeLessonRecord,
 } from "@/lib/db";
-import type { VocabItem, WrongAnswerItem } from "@/lib/db";
+import type { VocabItem, WrongAnswerItem, LessonRecord } from "@/lib/db";
 import {
   buildNotebookDashboardStats,
   buildSprintPack,
@@ -116,7 +119,7 @@ function FlashcardReview({
               </p>
               <SpeakButton
                 text={current.term_fr}
-                lang="fr-FR"
+                lang={current.language === "en" ? "en-US" : "fr-FR"}
                 size={20}
                 className="mx-auto"
               />
@@ -161,105 +164,64 @@ function FlashcardReview({
 
 /* ========== Wrong Answer Re-quiz Modal ========== */
 
-function ReQuizModal({
-  item,
-  ownerId,
-  onClose,
-  onResolved,
-}: {
+function ReQuizModal({ item, ownerId, onClose, onResolved }: {
   item: WrongAnswerItem;
   ownerId: string;
   onClose: () => void;
   onResolved: () => void;
 }) {
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const language = item.language ?? "zh";
+  const question = item["question_" + language as "question_zh" | "question_fr" | "question_en"];
+  const options = item["options_" + language as "options_zh" | "options_fr" | "options_en"];
+  const answer = item["answer_" + language as "answer_zh" | "answer_fr" | "answer_en"];
+  const correct = item.answerIndex ?? options.indexOf(answer);
+  const isCorrect = selected === correct;
 
-  const isCorrect = selectedOption === item.answer_zh;
-
-  const handleSubmit = async () => {
+  const submit = async () => {
     setShowResult(true);
     if (isCorrect && item.id) {
-      await resolveWrongAnswer(ownerId, item.id);
-      setTimeout(() => {
+      try {
+        await resolveWrongAnswer(ownerId, item.id);
         onResolved();
-        onClose();
-      }, 1500);
+      } catch {
+        setSaveError(true);
+      }
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="text-base font-bold text-foreground">重新做题</h3>
-          <button
-            onClick={onClose}
-            className="text-text-muted hover:text-foreground transition-colors"
-          >
-            <X size={20} />
-          </button>
+    <div role="dialog" aria-label="重新做题" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-semibold">重新做题</h3>
+          <button aria-label="关闭" onClick={onClose}><X size={19} /></button>
         </div>
-
-        <div className="p-6 space-y-4">
-          <div className="text-base font-medium text-foreground leading-relaxed">
-            <MarkdownRenderer content={item.question_zh} compact className="[&_p]:m-0" />
-          </div>
-
+        {item.source && <p className="mb-2 text-xs text-text-muted">{item.source}</p>}
+        <MarkdownRenderer content={question} />
+        <div className="my-3 space-y-2">
+          {options.map((option, index) => <button key={index} disabled={showResult}
+            className={"flex w-full items-start gap-2 rounded-lg border p-2.5 text-left text-sm " +
+              (showResult && index === correct ? "border-green-400 bg-green-50" :
+                selected === index ? "border-primary bg-sky-50" : "border-card-border")}
+            onClick={() => setSelected(index)}>
+            <span>{String.fromCharCode(65 + index)}.</span>
+            <MarkdownRenderer content={option} compact />
+          </button>)}
+        </div>
+        {showResult ? (
           <div className="space-y-2">
-            {item.options_zh.map((option, idx) => (
-              <button
-                key={idx}
-                onClick={() => !showResult && setSelectedOption(option)}
-                disabled={showResult}
-                className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all text-sm ${
-                  showResult
-                    ? option === item.answer_zh
-                      ? "border-green-400 bg-green-50 text-green-800"
-                      : option === selectedOption
-                        ? "border-red-400 bg-red-50 text-red-800"
-                        : "border-gray-100 text-gray-400"
-                    : selectedOption === option
-                      ? "border-primary bg-primary/5 text-primary"
-                      : "border-gray-200 hover:border-primary/30 hover:bg-gray-50"
-                }`}
-              >
-                <div className="flex items-start gap-2">
-                  <span className="font-medium pt-0.5">
-                    {String.fromCharCode(65 + idx)}.
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <MarkdownRenderer content={option} compact className="[&_p]:m-0 [&_p]:leading-normal text-left" />
-                  </div>
-                </div>
-              </button>
-            ))}
+            <p className={"text-sm font-medium " + (isCorrect ? "text-green-700" : "text-rose-700")}>
+              {isCorrect ? "答对了" : correct >= 0 ? "正确选项 " + String.fromCharCode(65 + correct) : "正确答案 " + answer}
+            </p>
+            {item.explanation && <MarkdownRenderer content={item.explanation} compact />}
+            {saveError && <p role="alert" className="text-sm text-rose-700">进度保存失败，请稍后重试。</p>}
           </div>
-
-          {showResult && (
-            <div
-              className={`px-4 py-3 rounded-xl text-sm font-medium ${
-                isCorrect
-                  ? "bg-green-50 text-green-700 border border-green-200"
-                  : "bg-red-50 text-red-700 border border-red-200"
-              }`}
-            >
-              {isCorrect
-                ? "✅ 回答正确！已从错题本中移除。"
-                : "❌ 回答错误，请继续复习该知识点。"}
-            </div>
-          )}
-        </div>
-
-        {!showResult && selectedOption && (
-          <div className="px-6 pb-6">
-            <button
-              onClick={handleSubmit}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-primary to-primary-light text-white font-medium hover:shadow-lg transition-all"
-            >
-              确认答案
-            </button>
-          </div>
+        ) : (
+          <button className="rounded-lg bg-primary px-4 py-2 text-sm text-white disabled:opacity-50"
+            disabled={selected === null} onClick={() => void submit()}>提交答案</button>
         )}
       </div>
     </div>
@@ -347,32 +309,51 @@ export default function NotebookPage() {
     setFlippedCardIds,
   } = notebook;
   const ownerId = resolveOwnerId(uid);
-  const [vocabs, setVocabs] = useState<VocabItem[]>([]);
-  const [dueVocabs, setDueVocabs] = useState<VocabItem[]>([]);
-  const [wrongAnswers, setWrongAnswers] = useState<WrongAnswerItem[]>([]);
+  const [allVocabs, setVocabs] = useState<VocabItem[]>([]);
+  const [allDueVocabs, setDueVocabs] = useState<VocabItem[]>([]);
+  const [allWrongAnswers, setWrongAnswers] = useState<WrongAnswerItem[]>([]);
+  const [allRecords, setRecords] = useState<LessonRecord[]>([]);
+  const [loadedOwner, setLoadedOwner] = useState<string | null>(null);
+  const [lessonFilter, setLessonFilter] = useState("all");
+  const [loadError, setLoadError] = useState("");
+  const loadId = useRef(0);
+  const lessons = useMemo(() => loadedOwner === ownerId ? [...new Set(
+    [...allVocabs, ...allWrongAnswers, ...allRecords].map((item) => item.lesson ?? ""),
+  )].sort((a, b) => a.localeCompare(b, "zh")) : [], [loadedOwner, ownerId, allVocabs, allWrongAnswers, allRecords]);
+  const matchesLesson = useCallback((item: { lesson?: string }) =>
+    lessonFilter === "all" || "lesson:" + (item.lesson ?? "") === lessonFilter, [lessonFilter]);
+  const vocabs = useMemo(() => loadedOwner === ownerId ? allVocabs.filter(matchesLesson) : [], [allVocabs, loadedOwner, matchesLesson, ownerId]);
+  const dueVocabs = useMemo(() => loadedOwner === ownerId ? allDueVocabs.filter(matchesLesson) : [], [allDueVocabs, loadedOwner, matchesLesson, ownerId]);
+  const wrongAnswers = useMemo(() => loadedOwner === ownerId ? allWrongAnswers.filter(matchesLesson) : [], [allWrongAnswers, loadedOwner, matchesLesson, ownerId]);
+  const lessonRecords = useMemo(() => loadedOwner === ownerId ? allRecords.filter(matchesLesson) : [], [allRecords, loadedOwner, matchesLesson, ownerId]);
   const [isSprintPackOpen, setIsSprintPackOpen] = useState(false);
   const [sprintPackData, setSprintPackData] = useState<SprintPackData | null>(null);
   const [sprintPackOwnerId, setSprintPackOwnerId] = useState(ownerId);
   const [dashboardTimestamp, setDashboardTimestamp] = useState<number>(() => Date.now());
 
   const loadData = useCallback(async () => {
+    const id = ++loadId.current;
     try {
-      const [allVocabs, due, allWrong] = await Promise.all([
-        getAllVocabs(ownerId),
-        getVocabsDueForReview(ownerId),
-        getAllWrongAnswers(ownerId),
+      const [vocabulary, due, wrong, records] = await Promise.all([
+        getAllVocabs(ownerId), getVocabsDueForReview(ownerId),
+        getAllWrongAnswers(ownerId), getLessonRecords(ownerId),
       ]);
-      setVocabs(allVocabs);
+      if (id !== loadId.current) return;
+      setVocabs(vocabulary);
       setDueVocabs(due);
-      setWrongAnswers(allWrong);
+      setWrongAnswers(wrong);
+      setRecords(records);
+      setLoadedOwner(ownerId);
+      setLoadError("");
       setDashboardTimestamp(Date.now());
-    } catch (e) {
-      console.error("Failed to load notebook data:", e);
+    } catch {
+      if (id === loadId.current) setLoadError("暂时无法读取本地笔记，请刷新后重试。");
     }
   }, [ownerId]);
 
   useEffect(() => {
     queueMicrotask(() => {
+      setLessonFilter("all");
       void loadData();
     });
   }, [loadData]);
@@ -415,8 +396,8 @@ export default function NotebookPage() {
     [dashboardStats]
   );
   const requizItem = useMemo(
-    () => wrongAnswers.find((item) => item.id === requizItemId) ?? null,
-    [wrongAnswers, requizItemId]
+    () => loadedOwner === ownerId ? allWrongAnswers.find((item) => item.id === requizItemId) ?? null : null,
+    [allWrongAnswers, loadedOwner, ownerId, requizItemId]
   );
   const activeSprintPackData =
     sprintPackOwnerId === ownerId ? sprintPackData : null;
@@ -473,6 +454,24 @@ export default function NotebookPage() {
           </p>
         </div>
 
+        {loadError && <p role="alert" className="mb-3 text-sm text-rose-700">{loadError}</p>}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-card-border bg-white px-4 py-3 text-sm">
+          <button type="button" className="font-medium text-primary" onClick={() => setTab("lessons")}>打开课程档案（{lessonRecords.length}）</button>
+          <label className="flex flex-wrap items-center gap-2 text-text-muted">
+            按课节查看
+            <select value={lessonFilter} onChange={(event) => setLessonFilter(event.target.value)}
+              className="max-w-56 rounded-lg border border-card-border bg-white px-2 py-1.5 text-foreground">
+              <option value="all">全部课节</option>
+              {lessons.map((title) => <option key={title} value={"lesson:" + title}>{title || "未分类"}</option>)}
+            </select>
+          </label>
+        </div>
+        {tab === "lessons" && <div className="mb-6">
+          <LessonArchive records={lessonRecords} onRemove={async (id) => {
+            await removeLessonRecord(ownerId, id);
+            await loadData();
+          }} />
+        </div>}
         <section className="mb-6 space-y-4 animate-fade-in-up-delay-1">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <DashboardMetricCard
@@ -927,7 +926,7 @@ export default function NotebookPage() {
         )}
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-2 mb-6 animate-fade-in-up-delay-1">
+        <div className="flex flex-wrap items-center gap-2 mb-6 animate-fade-in-up-delay-1">
           <div className="inline-flex bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
             <button
               onClick={() => setTab("vocab")}
@@ -958,6 +957,10 @@ export default function NotebookPage() {
                   {unresolvedWrong.length}
                 </span>
               )}
+            </button>
+            <button type="button" onClick={() => setTab("lessons")}
+              className={"rounded-lg px-3 py-2 text-sm font-medium " + (tab === "lessons" ? "bg-primary text-white" : "text-text-muted")}>
+              课程档案
             </button>
           </div>
 
@@ -1011,7 +1014,7 @@ export default function NotebookPage() {
                           </p>
                           <SpeakButton
                             text={vocab.term_fr}
-                            lang="fr-FR"
+                            lang={vocab.language === "en" ? "en-US" : "fr-FR"}
                             size={16}
                             className="mx-auto"
                           />

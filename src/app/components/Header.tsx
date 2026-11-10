@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CircleHelp, Menu, X } from "lucide-react";
 import AuthControls from "./auth/AuthControls";
+import LessonPicker from "./LessonPicker";
 
 // Logo Icon extracted from page.tsx
 export function LogoIcon() {
@@ -70,7 +71,7 @@ export default function Header() {
             </Link>
 
             {/* Right Nav */}
-            <div className="hidden md:flex items-center gap-6 text-sm font-medium">
+            <div className="hidden lg:flex items-center gap-4 text-sm font-medium">
               {navLinks.map((link) => (
                 <Link
                   key={link.path}
@@ -89,10 +90,11 @@ export default function Header() {
                 使用帮助
               </button>
               <div className="h-5 w-px bg-card-border" />
+              <LessonPicker />
               <AuthControls />
             </div>
 
-            <div className="flex items-center gap-2 md:hidden">
+            <div className="flex items-center gap-2 lg:hidden">
               <button
                 onClick={() => setIsHelpOpen(true)}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-card-border/70 bg-white/80 text-text-muted shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:text-primary"
@@ -113,7 +115,8 @@ export default function Header() {
 
           {/* Mobile Menu Dropdown */}
           {isMobileMenuOpen && (
-            <div className="md:hidden py-4 border-t border-card-border/50 animate-fade-in flex flex-col gap-2">
+            <div className="lg:hidden py-4 border-t border-card-border/50 animate-fade-in flex flex-col gap-2">
+              <div className="flex justify-end px-4"><LessonPicker /></div>
               {navLinks.map((link) => (
                 <Link
                   key={link.path}

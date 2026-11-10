@@ -44,7 +44,7 @@ export default function MermaidRenderer({ code }: MermaidRendererProps) {
             curve: "basis",
             padding: 12,
           },
-          securityLevel: "loose",
+          securityLevel: "strict",
           suppressErrorRendering: true,
         });
 

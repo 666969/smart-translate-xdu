@@ -10,11 +10,14 @@
  *   - 已登录：Firebase user.uid
  */
 
+import type { PdfCoverage, PdfSource } from "./pdfNavigation";
+
 const DB_NAME = "zhiyi-xidian-db";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const VOCAB_STORE = "vocabulary";
 const WRONG_ANSWER_STORE = "wrong_answers";
+const LESSON_STORE = "lesson_records";
 const OWNER_ID_INDEX = "ownerId";
 const VOCAB_DUE_INDEX = "ownerId_nextReviewAt";
 const MIGRATION_FLAG_PREFIX = "auth-migrated:";
@@ -30,7 +33,9 @@ export interface VocabItem {
   term_fr: string;
   term_zh: string;
   definition_zh: string;
-  source: string; // e.g. "snippet", "glossary"
+  source: string;
+  language?: "fr" | "en";
+  lesson?: string;
   createdAt: number;
   nextReviewAt: number;
   reviewCount: number;
@@ -49,12 +54,35 @@ export interface WrongAnswerItem {
   answer_zh: string;
   answer_en: string;
   wrongOption: string;
+  answerIndex?: number;
+  selectedIndex?: number;
+  language?: "zh" | "fr" | "en";
+  explanation?: string;
+  source?: string;
+  lesson?: string;
   createdAt: number;
   resolved: boolean;
 }
 
+export interface LessonRecord {
+  id: string;
+  ownerId: string;
+  lesson: string;
+  title: string;
+  kind: "pdf" | "translation" | "live";
+  markdown: string;
+  updatedAt: number;
+  pdf?: {
+    file: File;
+    page: number;
+    summary: string | null;
+    coverage: PdfCoverage | null;
+    messages: Array<{ role: "user" | "assistant"; content: string; sources?: PdfSource[]; error?: boolean }>;
+  };
+}
+
 interface OwnerScopedRecord {
-  id?: number;
+  id?: number | string;
   ownerId?: string;
 }
 
@@ -163,9 +191,18 @@ function openDB(): Promise<IDBDatabase> {
 
       ensureWrongAnswerStoreIndexes(wrongAnswerStore);
       backfillOwnerId(wrongAnswerStore);
+
+      if (!db.objectStoreNames.contains(LESSON_STORE)) {
+        db.createObjectStore(LESSON_STORE, { keyPath: "id" }).createIndex(OWNER_ID_INDEX, OWNER_ID_INDEX);
+      }
     };
 
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
+    request.onblocked = () => reject(new Error("请刷新其他智译西电标签页后重试。"));
     request.onerror = () => reject(request.error);
   });
 }
@@ -186,7 +223,7 @@ async function getAllByOwner<T>(storeName: string, ownerId: string): Promise<T[]
 async function getOwnedRecord<T extends OwnerScopedRecord>(
   storeName: string,
   ownerId: string,
-  id: number
+  id: number | string
 ): Promise<T | null> {
   const db = await openDB();
 
@@ -315,9 +352,10 @@ export async function removeVocab(ownerId: string, id: number): Promise<void> {
   });
 }
 
-export async function isVocabExists(ownerId: string, term_fr: string): Promise<boolean> {
+export async function isVocabExists(ownerId: string, term: string, lesson = "", language = "fr"): Promise<boolean> {
   const items = await getAllVocabs(ownerId);
-  return items.some((item) => item.term_fr === term_fr);
+  return items.some((item) => item.term_fr === term && (item.lesson ?? "") === lesson &&
+    (item.language ?? "fr") === language);
 }
 
 /* ========== Wrong Answers CRUD ========== */
@@ -392,6 +430,51 @@ export async function removeWrongAnswer(ownerId: string, id: number): Promise<vo
   });
 }
 
+export async function saveLessonRecord(record: LessonRecord) {
+  const db = await openDB();
+  try {
+    const tx = db.transaction(LESSON_STORE, "readwrite");
+    const done = waitForTransaction(tx);
+    const store = tx.objectStore(LESSON_STORE);
+    const lookup = store.get(record.id);
+    lookup.onsuccess = () => {
+      const prior = lookup.result as LessonRecord | undefined;
+      if (prior && prior.ownerId !== record.ownerId) {
+        tx.abort();
+      } else if (!prior || prior.updatedAt <= record.updatedAt) {
+        store.put(record);
+      }
+    };
+    await done;
+  } finally {
+    db.close();
+  }
+}
+
+export function getLessonRecords(ownerId: string) {
+  return getAllByOwner<LessonRecord>(LESSON_STORE, ownerId);
+}
+
+export function getLessonRecord(ownerId: string, id: string) {
+  return getOwnedRecord<LessonRecord>(LESSON_STORE, ownerId, id);
+}
+
+export async function removeLessonRecord(ownerId: string, id: string) {
+  const db = await openDB();
+  try {
+    const tx = db.transaction(LESSON_STORE, "readwrite");
+    const done = waitForTransaction(tx);
+    const store = tx.objectStore(LESSON_STORE);
+    const lookup = store.get(id);
+    lookup.onsuccess = () => {
+      if (lookup.result?.ownerId === ownerId) store.delete(id);
+    };
+    await done;
+  } finally {
+    db.close();
+  }
+}
+
 /* ========== Guest -> User Migration ========== */
 
 function migrateOwnerScopeInStore(store: IDBObjectStore, uid: string) {
@@ -420,11 +503,13 @@ export async function migrateGuestDataToUser(uid: string): Promise<void> {
   }
 
   const db = await openDB();
-  const tx = db.transaction([VOCAB_STORE, WRONG_ANSWER_STORE], "readwrite");
-
-  migrateOwnerScopeInStore(tx.objectStore(VOCAB_STORE), uid);
-  migrateOwnerScopeInStore(tx.objectStore(WRONG_ANSWER_STORE), uid);
-
-  await waitForTransaction(tx);
-  localStorage.setItem(flagKey, "1");
+  try {
+    const stores = [VOCAB_STORE, WRONG_ANSWER_STORE, LESSON_STORE];
+    const tx = db.transaction(stores, "readwrite");
+    for (const store of stores) migrateOwnerScopeInStore(tx.objectStore(store), uid);
+    await waitForTransaction(tx);
+    localStorage.setItem(flagKey, "1");
+  } finally {
+    db.close();
+  }
 }

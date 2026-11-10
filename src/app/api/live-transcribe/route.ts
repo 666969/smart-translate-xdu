@@ -1,103 +1,64 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import { consumeStudyBudget, readStudyForm, StudyApiError, studyApiErrorResponse } from "@/lib/studyApi";
+import { MAX_AUDIO_BYTES } from "@/lib/studyLimits";
 
-const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || "180000");
-const HAS_DEDICATED_TRANSCRIBE_API = Boolean(
-  process.env.OPENAI_TRANSCRIBE_API_KEY ||
-    process.env.OPENAI_TRANSCRIBE_BASE_URL
-);
-const TRANSCRIBE_API_KEY =
-  process.env.OPENAI_TRANSCRIBE_API_KEY || process.env.OPENAI_API_KEY;
-const TRANSCRIBE_BASE_URL = HAS_DEDICATED_TRANSCRIBE_API
-  ? process.env.OPENAI_TRANSCRIBE_BASE_URL || undefined
-  : process.env.OPENAI_BASE_URL || undefined;
-const TRANSCRIBE_MODEL =
-  process.env.OPENAI_TRANSCRIBE_MODEL ||
-  process.env.OPENAI_TRANSCRIPTION_MODEL ||
-  "whisper-1";
-
-const openai = new OpenAI({
-  apiKey: TRANSCRIBE_API_KEY || "transcription-api-key-not-configured",
-  baseURL: TRANSCRIBE_BASE_URL,
-  timeout: OPENAI_TIMEOUT_MS,
-});
-
-function normalizeLanguageCode(value: FormDataEntryValue | null) {
-  if (typeof value !== "string") {
-    return undefined;
+function speechConfiguration() {
+  const speechKey = process.env.OPENAI_TRANSCRIBE_API_KEY;
+  const speechBase = process.env.OPENAI_TRANSCRIBE_BASE_URL;
+  try {
+    if (speechBase) {
+      const url = new URL(speechBase);
+      const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+      if ((url.protocol === "https:" || (local && url.protocol === "http:")) && (speechKey || local)) {
+        return { apiKey: speechKey || "local-whisper", baseURL: speechBase };
+      }
+      return null;
+    }
+    if (speechKey) return { apiKey: speechKey };
+    const textBase = process.env.OPENAI_BASE_URL;
+    if (process.env.OPENAI_API_KEY && (!textBase || new URL(textBase).origin === "https://api.openai.com")) {
+      return { apiKey: process.env.OPENAI_API_KEY, baseURL: textBase };
+    }
+  } catch {
+    return null;
   }
-
-  const normalized = value.trim().toLowerCase();
-  if (normalized.startsWith("fr")) {
-    return "fr";
-  }
-
-  if (normalized.startsWith("en")) {
-    return "en";
-  }
-
-  return undefined;
+  return null;
 }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
+const configuration = speechConfiguration();
+const model = process.env.OPENAI_TRANSCRIBE_MODEL || process.env.OPENAI_TRANSCRIPTION_MODEL || "whisper-1";
+const speechClient = configuration ? new OpenAI({ ...configuration, timeout: 15_000, maxRetries: 0 }) : null;
 
-  return "标签页音频转写失败，请稍后重试。";
+export function GET() {
+  return NextResponse.json({ available: Boolean(speechClient) }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const baseURL = process.env.OPENAI_BASE_URL || "";
-    const usesDeepSeekTextApi =
-      baseURL.includes("api.deepseek.com") ||
-      baseURL.includes("/api/deepseek-proxy");
-
-    if (usesDeepSeekTextApi && !HAS_DEDICATED_TRANSCRIBE_API) {
-      return NextResponse.json(
-        {
-          error:
-            "当前已使用 DeepSeek 文本接口；DeepSeek 暂不提供此功能所需的音频转写接口。请配置独立的语音转写服务后再试。",
-        },
-        { status: 503 }
-      );
+    if (!speechClient) {
+      throw new StudyApiError("标签页音频需要独立的语音转写服务。你可以先使用麦克风模式。", 503);
     }
 
-    const formData = await request.formData();
-    const audio = formData.get("audio");
-    const language = normalizeLanguageCode(formData.get("language"));
-
-    if (!(audio instanceof File)) {
-      return NextResponse.json(
-        { error: "未接收到可转写的音频文件。" },
-        { status: 400 }
-      );
+    const form = await readStudyForm(request, MAX_AUDIO_BYTES + 16_384);
+    const audio = form.get("audio");
+    if (!(audio instanceof File) || !audio.size ||
+        !/^(?:audio\/(?:wav|x-wav|wave|mpeg|mp4|webm|ogg|flac|m4a)|video\/webm)(?:;|$)/i.test(audio.type)) {
+      throw new StudyApiError("未收到可转写的音频片段。");
     }
-
-    if (audio.size === 0) {
-      return NextResponse.json(
-        { error: "音频片段为空，请重新共享标签页音频。" },
-        { status: 400 }
-      );
-    }
-
-    const transcript = await openai.audio.transcriptions.create({
-      file: audio,
-      model: TRANSCRIBE_MODEL,
-      response_format: "json",
-      ...(language ? { language } : {}),
-    });
-
-    return NextResponse.json({
-      text: String(transcript?.text || "").trim(),
-      model: TRANSCRIBE_MODEL,
-    });
+    if (audio.size > MAX_AUDIO_BYTES) throw new StudyApiError("音频片段过大。", 413);
+    const language = String(form.get("language") ?? "").toLowerCase().split("-")[0];
+    consumeStudyBudget(request, "speech");
+    const transcript = await speechClient.audio.transcriptions.create({
+      file: audio, model, response_format: "json",
+      ...(language === "fr" || language === "en" ? { language } : {}),
+    }, { signal: request.signal });
+    return NextResponse.json({ text: String(transcript?.text ?? "").trim(), model });
   } catch (error) {
-    console.error("Live audio transcription failed:", error);
-    return NextResponse.json(
-      { error: getErrorMessage(error) },
-      { status: 500 }
-    );
+    const knownError = studyApiErrorResponse(error);
+    if (knownError) return knownError;
+    if (request.signal.aborted) return NextResponse.json({ error: "转写已取消。" }, { status: 499 });
+    console.error("[Speech] Failed", error instanceof OpenAI.APIError ? error.status : (error as Error)?.name);
+    return NextResponse.json({ error: "语音转写服务暂不可用，请重试或切换麦克风模式。" }, { status: 502 });
   }
 }

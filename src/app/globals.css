@@ -30,7 +30,7 @@
   --color-text-muted: var(--text-muted);
   --color-text-light: var(--text-light);
   --color-success: var(--success);
-  --font-sans: var(--font-inter), var(--font-noto-sans-sc), system-ui, sans-serif;
+  --font-sans: var(--font-inter), system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
 }
 
 /* ===== Global Styles ===== */

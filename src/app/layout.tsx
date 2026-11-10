@@ -11,13 +11,6 @@ const inter = localFont({
   weight: "100 900",
 });
 
-const notoSansSc = localFont({
-  src: "../../src/fonts/NotoSansSC-Regular.ttf",
-  variable: "--font-noto-sans-sc",
-  display: "swap",
-  weight: "400",
-});
-
 export const metadata: Metadata = {
   title: "智译西电 - 中外合作教学翻译助手",
   description:
@@ -32,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className={`${inter.variable} ${notoSansSc.variable} antialiased`}>
+      <body className={`${inter.variable} antialiased`}>
         <AuthProvider>
           <AppSessionProvider>{children}</AppSessionProvider>
         </AuthProvider>

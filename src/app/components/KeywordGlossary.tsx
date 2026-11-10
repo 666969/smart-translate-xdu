@@ -4,11 +4,13 @@ import { useState, useCallback, useEffect } from "react";
 import { Star } from "lucide-react";
 import SpeakButton from "./SpeakButton";
 import MarkdownRenderer from "./MarkdownRenderer";
-import { addVocab, isVocabExists, resolveOwnerId } from "@/lib/db";
-import { useAuth } from "@/hooks/useAuth";
+import { addVocab, isVocabExists } from "@/lib/db";
+import { useLesson } from "@/hooks/useLesson";
 
 export interface KeywordItem {
   term_fr: string;
+  term_en?: string;
+  language?: "fr" | "en";
   term_zh: string;
   definition_zh: string;
 }
@@ -80,14 +82,17 @@ function parseKeywordItems(content?: string) {
   return parsedItems;
 }
 
-function CollectButton({ item, ownerId }: { item: KeywordItem; ownerId: string }) {
+function CollectButton({ item }: { item: KeywordItem }) {
+  const { ownerId, lesson, loading } = useLesson();
+  const language = item.language === "en" && item.term_en ? "en" : "fr";
+  const term = language === "en" ? item.term_en! : item.term_fr;
   const [saved, setSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
-    void isVocabExists(ownerId, item.term_fr)
+    void isVocabExists(ownerId, term, lesson, language)
       .then((exists) => {
         if (isMounted) {
           setSaved(exists);
@@ -100,18 +105,20 @@ function CollectButton({ item, ownerId }: { item: KeywordItem; ownerId: string }
     return () => {
       isMounted = false;
     };
-  }, [item.term_fr, ownerId]);
+  }, [term, ownerId, lesson, language]);
 
   const handleCollect = useCallback(async () => {
     if (saved) return;
     try {
-      const exists = await isVocabExists(ownerId, item.term_fr);
+      const exists = await isVocabExists(ownerId, term, lesson, language);
       if (exists) {
         setSaved(true);
         return;
       }
       await addVocab(ownerId, {
-        term_fr: item.term_fr,
+        term_fr: term,
+        language,
+        lesson,
         term_zh: item.term_zh,
         definition_zh: item.definition_zh,
         source: "snippet",
@@ -122,12 +129,13 @@ function CollectButton({ item, ownerId }: { item: KeywordItem; ownerId: string }
     } catch (e) {
       console.error("Failed to save vocab:", e);
     }
-  }, [item, ownerId, saved]);
+  }, [item, ownerId, saved, term, language, lesson]);
 
   return (
     <div className="relative">
       <button
         onClick={handleCollect}
+        disabled={loading}
         className={`transition-all duration-200 ${
           saved
             ? "text-amber-500"
@@ -150,8 +158,6 @@ export default function KeywordGlossary({
   content,
   items,
 }: KeywordGlossaryProps) {
-  const { uid } = useAuth();
-  const ownerId = resolveOwnerId(uid);
   const normalizedItems = items && items.length > 0 ? items : parseKeywordItems(content);
 
   if (normalizedItems.length === 0) {
@@ -166,17 +172,23 @@ export default function KeywordGlossary({
     <div className="space-y-3">
       {normalizedItems.map((item, index) => (
         <div
-          key={`${item.term_fr}-${index}`}
+          key={item.term_fr + (item.term_en ?? "") + index}
           className="rounded-[22px] border border-amber-100/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,251,235,0.72))] px-4 py-3.5 shadow-sm"
         >
           <div className="flex flex-wrap items-center gap-2 text-sm leading-7">
-            <span className="font-semibold text-slate-900">{item.term_fr}</span>
-            <SpeakButton text={item.term_fr} lang="fr-FR" size={14} />
+            {item.term_fr && <span className="inline-flex items-center gap-1">
+              <span className="font-semibold text-slate-900">{item.term_fr}</span>
+              <SpeakButton text={item.term_fr} lang="fr-FR" size={14} />
+            </span>}
+            {item.term_en && <span className="inline-flex items-center gap-1">
+              <span className="font-semibold text-slate-900">{item.term_en}</span>
+              <SpeakButton text={item.term_en} lang="en-US" size={14} />
+            </span>}
             <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[12px] font-medium text-amber-700">
               {item.term_zh}
             </span>
             <div className="ml-auto">
-              <CollectButton item={item} ownerId={ownerId} />
+              <CollectButton item={item} />
             </div>
           </div>
           <div className="mt-1.5 text-sm leading-7 text-slate-600">
