@@ -688,7 +688,7 @@ export default function NotebookPage() {
                             2
                           </p>
                           <p className="mt-1 text-sm text-slate-700">
-                            去课件精读做一轮随堂小测，沉淀第一批错题。
+                            去截图练习做一轮小测，收录第一批错题。
                           </p>
                         </div>
                         <div className="rounded-2xl bg-white/85 px-4 py-3 shadow-sm">
@@ -829,7 +829,7 @@ export default function NotebookPage() {
                             如果已经掌握得比较稳，可以把复习重点放在高频术语和章节框架。
                           </div>
                           <div className="rounded-xl bg-slate-50 px-3 py-2">
-                            如果还没做过小测，去课件精读完成一轮题目后再生成，错题区会更有价值。
+                            如果还没做过小测，可以在截图练习完成一轮题目后再生成。
                           </div>
                         </div>
                       </div>
@@ -1059,7 +1059,7 @@ export default function NotebookPage() {
                   错题本空空如也
                 </h3>
                 <p className="text-sm text-text-muted max-w-md mx-auto">
-                  在「课件精读」做随堂测验时，答错的题目会自动收录到这里。做对后可以标记为「已解决」。
+                  在「截图练习」做小测时，答错的题目会自动收录到这里。做对后可以标记为「已解决」。
                 </p>
               </div>
             ) : (

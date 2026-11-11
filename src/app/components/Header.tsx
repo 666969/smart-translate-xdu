@@ -156,7 +156,7 @@ export default function Header() {
               <ul className="space-y-2 list-none p-0">
                 <li className="flex items-start gap-2">
                   <span className="text-primary mt-0.5">🔹</span> 
-                  <span><strong>教材翻译：</strong>在左侧输入法语/英语文本，或上传课件截图，AI 将为您输出符合理工科语境的精准翻译与知识脉络。</span>
+                  <span><strong>教材翻译：</strong>片段速译支持文字和截图。课件精读可上传整份 PDF，按页码提问。截图练习可生成知识导图和小测。</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-primary mt-0.5">🔹</span> 

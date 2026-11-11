@@ -35,7 +35,7 @@ export interface PdfDetails {
 
 export const emptyPdfDetails: PdfDetails = { activePage: 1, labels: [], coverage: null };
 
-type HomeMode = "snippet" | "document";
+export type HomeMode = "snippet" | "pdf" | "document";
 type NotebookTab = "vocab" | "wrong" | "lessons";
 
 interface HomeSessionState {

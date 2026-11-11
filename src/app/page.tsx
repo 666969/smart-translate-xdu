@@ -1,16 +1,16 @@
 "use client";
 
 import { useState, useRef, useEffect, useEffectEvent, lazy, Suspense } from "react";
-import { useRouter } from "next/navigation";
 import type { KeywordItem } from "./components/KeywordGlossary";
 import { normalizeTranslationLayout } from "@/lib/translationLayout";
-import { useAppSession } from "./components/AppSessionProvider";
+import { useAppSession, type HomeMode } from "./components/AppSessionProvider";
 
 const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
 const KeywordGlossary = lazy(() => import("./components/KeywordGlossary"));
 const DocumentMindmapPanel = lazy(() => import("./components/DocumentMindmapPanel"));
 const DocumentQuizPanel = lazy(() => import("./components/DocumentQuizPanel"));
 const ExportButton = lazy(() => import("./components/ExportButton"));
+const PdfWorkspace = lazy(() => import("./components/PdfWorkspace"));
 const TextbookTranslationRenderer = lazy(
   () => import("./components/TextbookTranslationRenderer")
 );
@@ -225,11 +225,10 @@ function CloseIcon() {
 /* ========== Main Page Component ========== */
 
 export default function Home() {
-  const router = useRouter();
   const { home, pendingPdfUpload } = useAppSession();
   const { ownerId, lesson, loading: authLoading } = useLesson();
   const {
-    mode,
+    mode: workspaceMode,
     setMode,
     deepMode,
     setDeepMode,
@@ -272,6 +271,7 @@ export default function Home() {
     errorMessage,
     setErrorMessage,
   } = home;
+  const mode = workspaceMode === "document" ? "document" : "snippet";
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [loadingTask, setLoadingTask] = useState<TranslateTask | null>(null);
   const isLoading = loadingTask !== null;
@@ -305,10 +305,12 @@ export default function Home() {
     }
   }, [chatMessages, isChatLoading]);
 
-  const handleModeChange = (nextMode: "snippet" | "document") => {
-    if (mode === nextMode) return;
+  const handleModeChange = (nextMode: HomeMode) => {
+    if (workspaceMode === nextMode) return;
     translationRequest.current?.abort();
     setLoadingTask(null);
+    fileDragDepth.current = 0;
+    setIsDraggingFiles(false);
     setMode(nextMode);
     setErrorMessage(null);
     setSaveNotice("");
@@ -379,6 +381,7 @@ export default function Home() {
   }
 
   const pasteImages = useEffectEvent((event: ClipboardEvent) => {
+    if (workspaceMode === "pdf") return;
     if (event.target instanceof HTMLElement && event.target.id === "chat-input") return;
     const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
     if (!files.length) return;
@@ -409,9 +412,8 @@ export default function Home() {
       setErrorMessage("正在确认登录状态，请稍后重新添加 PDF。");
       return;
     }
-    setErrorMessage(null);
     pendingPdfUpload.current = { file: pdf, ownerId };
-    router.push("/pdf");
+    handleModeChange("pdf");
   }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -537,7 +539,7 @@ export default function Home() {
     try {
       await saveLessonRecord({
         id, ownerId, lesson, kind: "translation", markdown, updatedAt: Date.now(),
-        title: mode === "snippet" ? snippetFile?.name || "片段速译" : "课件截图精读",
+        title: mode === "snippet" ? snippetFile?.name || "片段速译" : "课件截图练习",
       });
       setSaveNotice(usesCloudStudy(ownerId)
         ? "已保存到云端课程档案。"
@@ -620,6 +622,46 @@ export default function Home() {
     ? "grid lg:row-span-2 lg:grid-rows-subgrid lg:self-stretch"
     : "flex flex-col";
 
+  const modeOptions = [
+    { id: "snippet", icon: <TranslateIcon />, label: "片段速译" },
+    { id: "pdf", icon: <BookOpen size={22} />, label: "课件精读 (PDF)" },
+    { id: "document", icon: <ImageIcon />, label: "截图练习" },
+  ] as const;
+  const modeTabs = (
+    <div className="flex px-3 pt-4 border-b border-card-border/60 bg-background/30" role="group" aria-label="教材翻译模式">
+      {modeOptions.map(({ id, icon, label }) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={workspaceMode === id}
+          onClick={() => handleModeChange(id)}
+          className={`flex flex-1 flex-col items-center gap-1 border-b-2 px-1 pb-3 text-sm font-semibold transition-colors ${
+            workspaceMode === id
+              ? "border-primary text-primary"
+              : "border-transparent text-text-muted hover:text-foreground hover:border-text-muted/30"
+          }`}
+        >
+          {icon}
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  if (workspaceMode === "pdf") {
+    return (
+      <div className="min-h-screen bg-background" onDragOver={preventFileNavigation} onDrop={preventFileNavigation}>
+        <Header />
+        <div className="mx-auto max-w-[1440px] px-4 pt-6 lg:px-10">
+          <div className="max-w-xl overflow-hidden rounded-2xl border border-card-border bg-card-bg">{modeTabs}</div>
+        </div>
+        <Suspense fallback={<p role="status" className="mx-auto max-w-[1440px] px-4 py-6 text-sm text-text-muted lg:px-10">正在打开课件精读…</p>}>
+          <PdfWorkspace embedded />
+        </Suspense>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background" onDragOver={preventFileNavigation} onDrop={preventFileNavigation}>
       {/* ===== Top Navigation Bar (Shared) ===== */}
@@ -663,34 +705,7 @@ export default function Home() {
                   松开即可添加文件
                 </div>
               )}
-              <div className="flex px-4 pt-4 border-b border-card-border/60 bg-background/30">
-                <button
-                  onClick={() => handleModeChange("snippet")}
-                  className={`flex-1 pb-3 text-sm font-semibold transition-all duration-200 border-b-2 ${
-                    mode === "snippet"
-                      ? "border-primary text-primary"
-                      : "border-transparent text-text-muted hover:text-foreground hover:border-text-muted/30"
-                  }`}
-                >
-                  <div className="flex flex-col items-center gap-1">
-                    <TranslateIcon />
-                    <span>片段速译 (Snippet)</span>
-                  </div>
-                </button>
-                <button
-                  onClick={() => handleModeChange("document")}
-                  className={`flex-1 pb-3 text-sm font-semibold transition-all duration-200 border-b-2 ${
-                    mode === "document"
-                      ? "border-primary text-primary"
-                      : "border-transparent text-text-muted hover:text-foreground hover:border-text-muted/30"
-                  }`}
-                >
-                  <div className="flex flex-col items-center gap-1">
-                    <BookOpen />
-                    <span>课件精读 (Document)</span>
-                  </div>
-                </button>
-              </div>
+              {modeTabs}
 
               <div className="px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -839,7 +854,7 @@ export default function Home() {
                     id="upload-button"
                     type="button"
                     aria-describedby="translation-upload-help"
-                    title="PDF 会在文献精读中打开"
+                    title="PDF 会在课件精读中打开"
                     onClick={() => fileInputRef.current?.click()}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-primary-lighter/60 text-primary hover:bg-primary/5 hover:border-primary-light transition-all duration-200 text-sm font-medium"
                   >
@@ -1141,7 +1156,7 @@ export default function Home() {
                         </svg>
                       </div>
                       <p className="text-sm animate-pulse">AI 正在深度分析中... {loadingElapsed}s</p>
-                      <span className="text-xs text-text-light">课件精读通常需要 30-90 秒</span>
+                      <span className="text-xs text-text-light">截图练习通常需要 30-90 秒</span>
                     </div>
                   ) : (
                     <div className="space-y-6">

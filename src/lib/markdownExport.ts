@@ -155,7 +155,7 @@ export function buildLearningNoteMarkdown(snapshot: LearningNoteSnapshot) {
   lines.push("# 智译西电 — 学习笔记");
   lines.push("");
   lines.push(`> 导出时间：${formatExportDisplayTime()}`);
-  lines.push(`> 模式：${snapshot.mode === "snippet" ? "片段速译" : "课件精读"}`);
+  lines.push(`> 模式：${snapshot.mode === "snippet" ? "片段速译" : "截图练习"}`);
   lines.push("");
 
   if (snapshot.originalText) {
