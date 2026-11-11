@@ -560,6 +560,9 @@ export default function Home() {
       : hasDocumentInput
         ? `${documentFiles.length} 张图片`
         : "";
+  const panelColumnClass = mode === "snippet"
+    ? "grid lg:row-span-2 lg:grid-rows-subgrid lg:self-stretch"
+    : "flex flex-col";
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -587,14 +590,10 @@ export default function Home() {
             </button>
           </div>
         ) : null}
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-6 items-start">
-          <div
-            className={`animate-fade-in-up-delay-1 gap-5 ${
-              mode === "snippet"
-                ? "grid xl:grid-rows-[minmax(430px,1fr)_minmax(320px,1fr)]"
-                : "flex flex-col"
-            }`}
-          >
+        <div className={`grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-6 lg:gap-y-5 items-start ${
+          mode === "snippet" ? "xl:grid-rows-[minmax(430px,auto)_minmax(320px,auto)]" : ""
+        }`}>
+          <div className={`animate-fade-in-up-delay-1 gap-5 ${panelColumnClass}`}>
             <div className="bg-card-bg rounded-3xl border border-card-border shadow-sm card-hover overflow-hidden flex h-full flex-col">
               <div className="flex px-4 pt-4 border-b border-card-border/60 bg-background/30">
                 <button
@@ -892,13 +891,7 @@ export default function Home() {
             )}
           </div>
 
-          <div
-            className={`animate-fade-in-up-delay-2 gap-5 ${
-              mode === "snippet"
-                ? "grid xl:grid-rows-[minmax(430px,1fr)_minmax(320px,1fr)]"
-                : "flex flex-col"
-            }`}
-          >
+          <div className={`animate-fade-in-up-delay-2 gap-5 ${panelColumnClass}`}>
             {mode === "snippet" ? (
               <>
                 <div className="bg-card-bg rounded-3xl border border-card-border shadow-sm overflow-hidden h-full flex flex-col">
