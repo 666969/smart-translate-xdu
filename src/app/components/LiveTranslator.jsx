@@ -7,7 +7,8 @@ import { useLesson } from "@/hooks/useLesson";
 import { glossaryData } from "@/data/glossaryData";
 import { saveLessonRecord } from "@/lib/db";
 import { cloudStudyEnabled, studySaveError, usesCloudStudy } from "@/lib/studyStorage";
-import { captureClassroomAudio } from "@/lib/classroomAudio";
+import { captureClassroomAudio, classroomWav, CLASSROOM_SAMPLE_RATE } from "@/lib/classroomAudio";
+import { createClassroomTranscriber } from "@/lib/classroomTranscriber";
 import { buildLiveSessionMarkdown, downloadMarkdownFile } from "@/lib/markdownExport";
 
 const button = "inline-flex items-center justify-center gap-2 rounded-xl border border-card-border bg-white px-3 py-2 text-sm font-medium text-text-muted hover:text-primary disabled:opacity-50";
@@ -89,9 +90,12 @@ function LiveSession({ ownerId, lesson, loading }) {
   const [follow, setFollow] = useState(true);
   const [showTabGuide, setShowTabGuide] = useState(false);
   const [pendingAudio, setPendingAudio] = useState(0);
+  const [inputLevel, setInputLevel] = useState(null);
+  const [preparingModel, setPreparingModel] = useState(false);
   const listRef = useRef(null);
   const runRef = useRef(null);
   const captureRef = useRef(null);
+  const transcriberRef = useRef(null);
   const startRef = useRef(null);
   const autoScrollRef = useRef(true);
   const terms = useMemo(() => courseTerms(lesson), [lesson]);
@@ -105,13 +109,21 @@ function LiveSession({ ownerId, lesson, loading }) {
       nativeMic: Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
       deviceMic: Boolean(navigator.mediaDevices?.getUserMedia && window.AudioWorkletNode),
       tab: Boolean(navigator.mediaDevices?.getDisplayMedia && window.AudioWorkletNode),
+      localSpeech: Boolean(window.Worker && window.WebAssembly && window.AudioContext),
     };
-    void fetch("/api/live-transcribe", { cache: "no-store", signal: controller.signal })
-      .then((res) => res.ok ? res.json() : { available: false })
-      .catch(() => ({ available: false }))
-      .then((result) => {
-        if (!controller.signal.aborted) setCapabilities({ ...browser, speech: result.available === true });
+    const options = { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(4_000)]) };
+    void Promise.all([
+      fetch("/api/live-transcribe", options).then((res) => res.ok ? res.json() : null).catch(() => null),
+      browser.localSpeech
+        ? fetch("/classroom-model/v1/ready.json", options).then((res) => res.ok ? res.json() : null).catch(() => null)
+        : null,
+    ]).then(([speech, deviceModel]) => {
+      if (!controller.signal.aborted) setCapabilities({
+        ...browser,
+        speech: speech?.available === true,
+        localSpeech: deviceModel?.model === "whisper-base",
       });
+    });
     return () => controller.abort();
   }, []);
 
@@ -257,16 +269,34 @@ function LiveSession({ ownerId, lesson, loading }) {
     try {
       while (!run.controller.signal.aborted && run.audio.length) {
         setPendingAudio(run.audio.length);
-        const form = new FormData();
         const item = run.audio.shift();
-        form.set("audio", item.blob, "classroom.wav");
-        form.set("language", run.language);
         try {
-          const signal = AbortSignal.any([run.controller.signal, AbortSignal.timeout(17_000)]);
-          const data = await requestResult("/api/live-transcribe", form, signal);
-          addLine(run, data.text || "", item.seconds);
+          let text;
+          if (run.transcriber) {
+            text = await run.transcriber.transcribe(item.samples, run.language);
+          } else {
+            const form = new FormData();
+            form.set("audio", classroomWav(item.samples), "classroom.wav");
+            form.set("language", run.language);
+            const signal = AbortSignal.any([run.controller.signal, AbortSignal.timeout(17_000)]);
+            text = (await requestResult("/api/live-transcribe", form, signal)).text;
+          }
+          if (text?.trim()) {
+            if (run.noTranscript) {
+              run.noTranscript = false;
+              setError("");
+            }
+            addLine(run, text, item.seconds);
+          } else if (runRef.current === run && !run.lines.length && !run.controller.signal.aborted) {
+            run.noTranscript = true;
+            setError("收到了声音，暂未识别出语音。请确认课堂语言，再说一句完整的话。");
+          }
         } catch (failure) {
           if (run.controller.signal.aborted) break;
+          if (run.transcriber && transcriberRef.current === run.transcriber) {
+            run.transcriber.close();
+            transcriberRef.current = null;
+          }
           noteIssue(run, failure instanceof Error ? failure.message : "语音转写中断。");
           run.audio = [];
           stopCapture(false);
@@ -278,16 +308,16 @@ function LiveSession({ ownerId, lesson, loading }) {
     }
   }
 
-  function queueAudio(run, audio) {
+  function queueAudio(run, samples) {
     if (runRef.current !== run || run.controller.signal.aborted) return;
     if (run.audio.length >= MAX_AUDIO_WAITING) {
       run.dropped += 1;
       noteIssue(run, "转写速度跟不上，已有 " + run.dropped + " 个音频片段跳过。仍会保留已识别的字幕。");
       return;
     }
-    const duration = (audio.size - 44) / 32_000;
+    const duration = samples.length / CLASSROOM_SAMPLE_RATE;
     const seconds = Math.round((Date.now() - run.startTime) / 1000 - duration);
-    run.audio.push({ blob: audio, seconds });
+    run.audio.push({ samples, seconds });
     setPendingAudio(run.audio.length + Number(run.processingAudio));
     void processAudio(run);
   }
@@ -298,6 +328,8 @@ function LiveSession({ ownerId, lesson, loading }) {
     const capture = captureRef.current;
     captureRef.current = null;
     setInterim("");
+    setInputLevel(null);
+    setPreparingModel(false);
     if (!capture) {
       setStage("idle");
       return;
@@ -318,8 +350,11 @@ function LiveSession({ ownerId, lesson, loading }) {
     const start = new AbortController();
     startRef.current = start;
     const run = getRun();
+    run.transcriber = null;
+    run.noTranscript = false;
     try {
-      if (inputSource === "mic" && capabilities.nativeMic && !(capabilities.deviceMic && capabilities.speech)) {
+      const canProcessAudio = capabilities.speech || capabilities.localSpeech;
+      if (inputSource === "mic" && capabilities.nativeMic && !(capabilities.deviceMic && canProcessAudio)) {
         const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const speech = new Recognition();
         speech.lang = language;
@@ -364,12 +399,19 @@ function LiveSession({ ownerId, lesson, loading }) {
 
       const stream = inputSource === "tab"
         ? await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
-        : await navigator.mediaDevices.getUserMedia({ audio: true });
+        : await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       const stopTracks = () => stream.getTracks().forEach((track) => { track.onended = null; track.stop(); });
       try {
         start.signal.throwIfAborted();
-        if (!stream.getAudioTracks().length) throw new Error("没有检测到共享音频。请选中浏览器标签页并勾选共享音频。");
-        const close = await captureClassroomAudio(stream, (audio) => queueAudio(run, audio));
+        if (!stream.getAudioTracks().length) throw new Error(inputSource === "tab"
+          ? "没有检测到共享音频。请选中浏览器标签页并勾选共享音频。"
+          : "没有检测到麦克风音轨，请检查系统的默认输入设备。");
+        let submitAudio = false;
+        setInputLevel(0);
+        const close = await captureClassroomAudio(stream,
+          (samples) => { if (submitAudio) queueAudio(run, samples); },
+          (level) => { if (!start.signal.aborted) setInputLevel(level); },
+          start.signal);
         if (start.signal.aborted) {
           await close(false);
           stopTracks();
@@ -377,6 +419,28 @@ function LiveSession({ ownerId, lesson, loading }) {
         }
         captureRef.current = { close: (finish) => close(finish).finally(stopTracks) };
         stream.getTracks().forEach((track) => { track.onended = () => stopCapture(); });
+        if (!capabilities.speech) {
+          setPreparingModel(!transcriberRef.current);
+          const transcriber = transcriberRef.current ??= createClassroomTranscriber();
+          const cancelPreparation = () => {
+            transcriber.close();
+            if (transcriberRef.current === transcriber) transcriberRef.current = null;
+          };
+          start.signal.addEventListener("abort", cancelPreparation, { once: true });
+          try {
+            await transcriber.prepare();
+            start.signal.throwIfAborted();
+          } catch (error) {
+            cancelPreparation();
+            throw error;
+          } finally {
+            start.signal.removeEventListener("abort", cancelPreparation);
+            if (!start.signal.aborted) setPreparingModel(false);
+          }
+          run.transcriber = transcriber;
+        }
+        if (!run.lines.length) run.startTime = Date.now();
+        submitAudio = true;
         setStage("listening");
       } catch (failure) {
         stopTracks();
@@ -385,7 +449,9 @@ function LiveSession({ ownerId, lesson, loading }) {
     } catch (failure) {
       if (start.signal.aborted) return;
       noteIssue(run, failure?.name === "NotAllowedError" ? "收音授权已取消，或浏览器未授予音频权限。"
-        : failure instanceof Error ? failure.message : "无法开启收音。");
+        : failure?.name === "NotFoundError" ? "找不到可用的麦克风，请检查系统的输入设备。"
+          : failure?.name === "NotReadableError" ? "麦克风无法打开，请检查系统权限或关闭占用麦克风的应用。"
+            : failure instanceof Error ? failure.message : "无法开启收音。");
       stopCapture(false);
     }
   }
@@ -395,6 +461,8 @@ function LiveSession({ ownerId, lesson, loading }) {
     const capture = captureRef.current;
     captureRef.current = null;
     if (capture) void capture.close(false).catch(() => {});
+    transcriberRef.current?.close();
+    transcriberRef.current = null;
     const run = runRef.current;
     runRef.current = null;
     disposeRun(run);
@@ -422,9 +490,11 @@ function LiveSession({ ownerId, lesson, loading }) {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }
 
-  const canShare = capabilities?.tab && capabilities?.speech;
-  const canMic = capabilities?.nativeMic || (capabilities?.deviceMic && capabilities?.speech);
+  const canProcessAudio = capabilities?.speech || capabilities?.localSpeech;
+  const canShare = capabilities?.tab && canProcessAudio;
+  const canMic = capabilities?.nativeMic || (capabilities?.deviceMic && canProcessAudio);
   const canStart = inputSource === "tab" ? canShare : canMic;
+  const canStop = isListening || stage === "starting";
 
   return (
     <div className="min-h-screen bg-background">
@@ -447,10 +517,10 @@ function LiveSession({ ownerId, lesson, loading }) {
               </select>
             </label>
             <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              disabled={loading || (!isListening && (busy || !canStart))}
-              onClick={() => isListening ? stopCapture() : inputSource === "tab" ? setShowTabGuide(true) : void startCapture()}>
-              {isListening ? <Square size={15} /> : <Mic size={15} />}
-              {isListening ? "停止收音" : stage === "starting" ? "正在开启收音" : busy ? "正在完成转写" : "开始同传"}
+              disabled={!canStop && (loading || busy || !canStart)}
+              onClick={() => canStop ? stopCapture(isListening) : inputSource === "tab" ? setShowTabGuide(true) : void startCapture()}>
+              {canStop ? <Square size={15} /> : <Mic size={15} />}
+              {isListening ? "停止收音" : stage === "starting" ? "取消开启" : busy ? "正在完成转写" : "开始同传"}
             </button>
             <button className={button} disabled={!subtitles.length} onClick={() => {
               if (runRef.current) downloadMarkdownFile("智译西电_随堂同传", buildLiveSessionMarkdown(snapshot(runRef.current, isListening)));
@@ -461,10 +531,18 @@ function LiveSession({ ownerId, lesson, loading }) {
             <button className={button} disabled={busy || !subtitles.length} onClick={newSession}>开始新记录</button>
           </div>
           {capabilities && !canShare && <p className="mt-2 text-xs text-text-muted">
-            {capabilities.speech ? "当前浏览器无法共享标签页音频，请使用麦克风。" : "标签页转写服务尚未配置，当前可使用浏览器麦克风识别。"}
+            当前浏览器无法共享并转写标签页音频，可以使用麦克风模式。
           </p>}
           {capabilities && !canMic && <p className="mt-2 text-xs text-text-muted">当前浏览器的麦克风识别不可用。</p>}
-          {pendingAudio > 0 && <p className="mt-2 text-xs text-primary">待转写音频片段 {pendingAudio}</p>}
+          {stage === "starting" && <p role="status" className="mt-2 text-xs text-primary">
+            {preparingModel ? "正在准备设备端语音模型。首次需下载约 100 MB，准备好后开始转写。" : "正在开启音频输入…"}
+          </p>}
+          {inputLevel !== null && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+            <span>输入音量</span>
+            <meter className="w-28" min={0} max={100} value={inputLevel} aria-label="输入音量" />
+            <span>{inputLevel >= 6 ? "已检测到声音" : "等待声音"}</span>
+          </div>}
+          {pendingAudio > 0 && <p className="mt-2 text-xs text-primary">正在转写 · {pendingAudio} 个音频片段</p>}
           {error && <p role="alert" className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertCircle size={16} className="mt-0.5 shrink-0" />{error}</p>}
           {translationIssue && <p role="status" className="mt-2 text-sm text-rose-700">{translationIssue}</p>}
           {saveError && <p role="alert" className="mt-2 text-sm text-rose-700">{saveError}</p>}
@@ -473,7 +551,7 @@ function LiveSession({ ownerId, lesson, loading }) {
 
         {showTabGuide && <section className="rounded-2xl border border-card-border bg-white p-4">
           <h2 className="font-semibold">共享老师所在的浏览器标签页</h2>
-          <p className="mt-1 text-sm text-text-muted">选择「标签页」并勾选共享音频。网页会把音频分段交给已配置的转写服务。</p>
+          <p className="mt-1 text-sm text-text-muted">选择「标签页」并勾选共享音频，网页会识别该标签页播放的声音。</p>
           <div className="mt-3 flex gap-2">
             <button className={button} onClick={() => void startCapture()}>选择标签页</button>
             <button className={button} onClick={() => setShowTabGuide(false)}>取消</button>

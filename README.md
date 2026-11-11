@@ -23,7 +23,7 @@ npm run dev
 
 脚本会在本机同时启动网站和语音转写，关闭网站后退出转写服务。进入「随堂同传」，选法语或英语，再选择麦克风或标签页音频。共享标签页时，在浏览器选择器中勾选共享音频。音频转文字由本机处理，字幕的中文翻译走网站配置的文本模型。
 
-正式部署时可以配置独立的 OpenAI 兼容语音转写服务。填写 `OPENAI_TRANSCRIBE_BASE_URL`、`OPENAI_TRANSCRIBE_API_KEY` 与 `OPENAI_TRANSCRIBE_MODEL`。只有文本服务时，页面会提供浏览器原生麦克风识别，并提示标签页音频的配置状态。浏览器原生识别是否可用取决于设备、浏览器和网络。
+随堂同传可用 [Whisper Base](https://huggingface.co/Xenova/whisper-base) 在浏览器里识别法语或英语。首次使用会从本站加载约 100 MB 的模型和运行文件，之后可用浏览器缓存。页面显示输入音量，外文字幕会交给文本模型翻译。Render 构建会准备模型，本地开发可运行 `npm run prepare:live`。也可以通过 `OPENAI_TRANSCRIBE_BASE_URL`、`OPENAI_TRANSCRIBE_API_KEY` 与 `OPENAI_TRANSCRIBE_MODEL` 配置独立转写服务。
 
 ## 课件与课程档案
 

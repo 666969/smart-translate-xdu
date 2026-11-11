@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prepare:live": "node scripts/prepare-classroom-model.mjs --prepare",
+    "prebuild": "node scripts/prepare-classroom-model.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
