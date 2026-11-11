@@ -1,5 +1,9 @@
 export const CLASSROOM_SAMPLE_RATE = 16_000;
-const MIN_SIGNAL = 0.003;
+export const CLASSROOM_VOICE_LEVEL = 3;
+const INPUT_LEVEL_SCALE = 2000;
+const START_SIGNAL_RMS = CLASSROOM_VOICE_LEVEL / INPUT_LEVEL_SCALE;
+// A lower threshold within a phrase keeps softer syllables from ending it early.
+const CONTINUE_SIGNAL_RMS = 0.00065;
 const MAX_SEGMENT_SECONDS = 10;
 const PAUSE_SECONDS = 0.75;
 
@@ -97,8 +101,8 @@ export async function captureClassroomAudio(
     let energy = 0;
     for (const sample of packet) energy += sample * sample;
     const rms = Math.sqrt(energy / packet.length);
-    const audible = rms >= MIN_SIGNAL;
-    onLevel(Math.min(100, Math.round(rms * 2000)));
+    const audible = rms >= (hasSignal ? CONTINUE_SIGNAL_RMS : START_SIGNAL_RMS);
+    onLevel(Math.min(100, Math.floor(rms * INPUT_LEVEL_SCALE)));
     if (!collecting) return;
     if (!hasSignal && !audible) {
       // Keep a short lead-in so quiet consonants before a louder vowel are preserved.

@@ -8,7 +8,7 @@ import { useLesson } from "@/hooks/useLesson";
 import { glossaryData } from "@/data/glossaryData";
 import { saveLessonRecord } from "@/lib/db";
 import { cloudStudyEnabled, studySaveError, usesCloudStudy } from "@/lib/studyStorage";
-import { captureClassroomAudio, classroomWav, CLASSROOM_SAMPLE_RATE } from "@/lib/classroomAudio";
+import { captureClassroomAudio, classroomWav, CLASSROOM_SAMPLE_RATE, CLASSROOM_VOICE_LEVEL } from "@/lib/classroomAudio";
 import { createClassroomTranscriber } from "@/lib/classroomTranscriber";
 import { buildLiveSessionMarkdown, downloadMarkdownFile } from "@/lib/markdownExport";
 
@@ -547,7 +547,7 @@ function LiveSession({ ownerId, lesson, loading }) {
           {inputLevel !== null && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
             <span>输入音量</span>
             <meter className="w-28" min={0} max={100} value={inputLevel} aria-label="输入音量" />
-            <span>{inputLevel >= 6 ? "已检测到声音" : "等待声音"}</span>
+            <span>{inputLevel >= CLASSROOM_VOICE_LEVEL ? "已检测到声音" : "等待声音"}</span>
           </div>}
           {pendingAudio > 0 && <p className="mt-2 text-xs text-primary">正在转写 · {pendingAudio} 个音频片段</p>}
           {error && <p role="alert" className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertCircle size={16} className="mt-0.5 shrink-0" />{error}</p>}
