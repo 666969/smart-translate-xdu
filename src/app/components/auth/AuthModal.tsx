@@ -33,6 +33,10 @@ function getAuthErrorMessage(error: unknown) {
     case "auth/user-not-found":
     case "auth/invalid-credential":
       return "账号或密码不正确。";
+    case "auth/network-request-failed":
+      return "账号服务连接失败，请检查网络后再试。";
+    case "auth/too-many-requests":
+      return "尝试次数较多，请稍后再试。";
     case "auth/popup-closed-by-user":
       return "Google 登录窗口已关闭。";
     case "auth/operation-not-allowed":

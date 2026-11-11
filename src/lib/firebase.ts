@@ -29,6 +29,12 @@ let googleProvider: GoogleAuthProvider | null = null;
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
+  if (typeof window !== "undefined") {
+    const host = window.location.host + "/api/firebase-relay/auth";
+    auth.config.apiHost = host;
+    auth.config.tokenApiHost = host;
+    auth.config.apiScheme = window.location.protocol.slice(0, -1);
+  }
   googleProvider = new GoogleAuthProvider();
   googleProvider.setCustomParameters({ prompt: "select_account" });
 }

@@ -1,8 +1,8 @@
 import {
-  collection, doc, getDocFromServer, getDocsFromServer, initializeFirestore,
-  memoryLocalCache, query, runTransaction, where, type Firestore, type DocumentData,
+  collection, doc, getDoc, getDocs, initializeFirestore,
+  query, runTransaction, where, type Firestore, type DocumentData,
   type DocumentReference, type Transaction,
-} from "firebase/firestore";
+} from "firebase/firestore/lite";
 import { app, auth } from "./firebase";
 import type { LessonRecord, StudyItemId, VocabItem, WrongAnswerItem } from "./db";
 
@@ -14,7 +14,10 @@ let firestore: Firestore | undefined;
 export function getStudyFirestore() {
   if (!app) throw new Error("账号服务尚未配置。");
   return firestore ??= initializeFirestore(app, {
-    localCache: memoryLocalCache(),
+    ...(typeof window !== "undefined" ? {
+      host: window.location.host + "/api/firebase-relay/firestore",
+      ssl: window.location.protocol === "https:",
+    } : {}),
     ignoreUndefinedProperties: true,
   });
 }
@@ -35,7 +38,7 @@ function vocabularyId(term: string, lesson: string, language: string) {
 
 export async function cloudVocabExists(ownerId: string, term: string, lesson: string, language: string) {
   const key = await vocabularyId(term, lesson, language);
-  return (await getDocFromServer(doc(records(ownerId, "vocabulary"), key))).exists();
+  return (await getDoc(doc(records(ownerId, "vocabulary"), key))).exists();
 }
 
 async function createItem<T extends VocabItem | WrongAnswerItem>(
@@ -64,7 +67,7 @@ export async function saveCloudWrongAnswer(record: WrongAnswerItem, original?: W
 
 export async function listCloudItems<T extends VocabItem | WrongAnswerItem>(ownerId: string, store: ItemStore, dueAt?: number) {
   const collectionRef = records(ownerId, store);
-  const result = await getDocsFromServer(dueAt === undefined ? collectionRef : query(collectionRef, where("nextReviewAt", "<=", dueAt)));
+  const result = await getDocs(dueAt === undefined ? collectionRef : query(collectionRef, where("nextReviewAt", "<=", dueAt)));
   return result.docs.map((item) => ({ ...item.data(), id: item.id } as T))
     .sort((left, right) => left.createdAt - right.createdAt);
 }
@@ -172,7 +175,7 @@ export function readCloudLesson(ownerId: string, id: string) {
 }
 
 export async function listCloudLessons(ownerId: string) {
-  const rows = await getDocsFromServer(records(ownerId, "lesson_records"));
+  const rows = await getDocs(records(ownerId, "lesson_records"));
   const lessons = await Promise.all(rows.docs.map((row) => {
     const header = row.data();
     return partCount(header) ? readCloudLesson(ownerId, row.id) : JSON.parse(header.payload) as LessonRecord;

@@ -6,7 +6,7 @@ import { buildPdfSummaryContext, selectPdfSources } from "@/lib/pdfStudy";
 import { MAX_PDF_PAGES, MAX_PDF_TEXT_CHARS, MAX_SCAN_PAGES, MAX_SCAN_REQUEST_BYTES } from "@/lib/studyLimits";
 import { consumeStudyBudget, readStudyJson, readStudyMessages, StudyApiError, studyApiErrorResponse, textProviderErrorResponse } from "@/lib/studyApi";
 import { normalizeLatexContent } from "@/lib/markdownMath";
-import { textModels } from "@/lib/textModels";
+import { textModels, usesDeepSeek } from "@/lib/textModels";
 
 const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || "180000");
 
@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
     const model = body.deepMode === true ? textModels.deep : textModels.flash;
     const requestOptions = { signal: request.signal };
     const limit = body.deepMode === true ? 12_000 : 4_000;
+    const speed = usesDeepSeek && body.deepMode !== true ? { reasoning_effort: "none" as const } : {};
 
     if (mode === "scan_pages") {
       const messages = readStudyMessages(body.messages);
@@ -158,8 +159,10 @@ export async function POST(request: NextRequest) {
         ],
         temperature: 0.3,
         max_tokens: limit,
+        ...speed,
       }, requestOptions);
-      const reply = normalizeLatexContent(completion.choices[0]?.message?.content || "未生成答案，请重试。");
+      const reply = normalizeLatexContent(completion.choices[0]?.message?.content || "").trim();
+      if (!reply) throw new StudyApiError("未生成答案，请重试。", 502);
       return documentReply(reply, sources);
     }
 
@@ -177,6 +180,7 @@ export async function POST(request: NextRequest) {
         ],
         temperature: 0.2,
         max_tokens: limit,
+        ...speed,
       }, requestOptions);
       const summary = normalizeLatexContent(completion.choices[0]?.message?.content || "");
       if (!summary) throw new StudyApiError("摘要暂未生成，请重试。", 502);
@@ -224,8 +228,10 @@ export async function POST(request: NextRequest) {
       ],
       temperature: 0.3,
       max_tokens: limit,
+      ...speed,
     }, requestOptions);
-    const reply = normalizeLatexContent(completion.choices[0]?.message?.content || "未生成答案，请重试。");
+    const reply = normalizeLatexContent(completion.choices[0]?.message?.content || "").trim();
+    if (!reply) throw new StudyApiError("未生成答案，请重试。", 502);
     return documentReply(reply, sources);
   } catch (error) {
     const knownError = studyApiErrorResponse(error);

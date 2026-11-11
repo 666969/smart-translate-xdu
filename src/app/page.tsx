@@ -15,11 +15,13 @@ const TextbookTranslationRenderer = lazy(
   () => import("./components/TextbookTranslationRenderer")
 );
 import Header from "./components/Header";
+import OperationProgress from "./components/OperationProgress";
 import { BookOpen, Save } from "lucide-react";
 import { useLesson } from "@/hooks/useLesson";
 import { saveLessonRecord } from "@/lib/db";
 import { studySaveError, usesCloudStudy } from "@/lib/studyStorage";
 import { buildLearningNoteMarkdown } from "@/lib/markdownExport";
+import { postWithUploadProgress, type ProgressValue } from "@/lib/uploadProgress";
 import { IMAGE_MIME_TYPES, isPdfFile, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, MAX_IMAGE_BYTES, MAX_IMAGE_COUNT, MAX_PDF_BYTES, MAX_SNIPPET_CHARS } from "@/lib/studyLimits";
 
 /* ========== Types ========== */
@@ -274,6 +276,7 @@ export default function Home() {
   const mode = workspaceMode === "document" ? "document" : "snippet";
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [loadingTask, setLoadingTask] = useState<TranslateTask | null>(null);
+  const [imageUpload, setImageUpload] = useState<{ progress?: ProgressValue } | null>(null);
   const isLoading = loadingTask !== null;
   const [saveNotice, setSaveNotice] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -480,6 +483,8 @@ export default function Home() {
     translationRequest.current?.abort();
     translationRequest.current = request;
     setLoadingTask(task);
+    const hasImages = mode === "snippet" ? Boolean(snippetFile) : documentFiles.length > 0;
+    setImageUpload(hasImages ? {} : null);
     setErrorMessage(null);
     setSaveNotice("");
 
@@ -498,10 +503,12 @@ export default function Home() {
       const timeout = getTranslateTimeoutMs({
         mode, hasSnippetImage: Boolean(snippetFile), documentImageCount: documentFiles.length,
       });
-      const response = await fetch("/api/translate", {
-        method: "POST", body: form,
-        signal: AbortSignal.any([request.signal, AbortSignal.timeout(timeout)]),
-      });
+      const signal = AbortSignal.any([request.signal, AbortSignal.timeout(timeout)]);
+      const response = hasImages
+        ? await postWithUploadProgress("/api/translate", form, signal, (progress) => {
+            if (!request.signal.aborted) setImageUpload(progress ? { progress } : null);
+          })
+        : await fetch("/api/translate", { method: "POST", body: form, signal });
       const data = await response.json().catch(() => null);
       if (request.signal.aborted) return;
       if (!response.ok || !data) throw new Error(data?.error || "请求失败，请重试。");
@@ -525,7 +532,10 @@ export default function Home() {
         ? "请求超时，可稍后重试或减少截图。"
         : error instanceof Error ? error.message : "请求失败，请重试。");
     } finally {
-      if (!request.signal.aborted) setLoadingTask(null);
+      if (!request.signal.aborted) {
+        setLoadingTask(null);
+        setImageUpload(null);
+      }
     }
   };
 
@@ -849,6 +859,14 @@ export default function Home() {
                   )
                 )}
 
+                {isLoading && <OperationProgress
+                  label={imageUpload ? "正在上传截图"
+                    : loadingTask === "quiz" ? "正在生成三语小测"
+                      : loadingTask === "mindmap" ? "正在生成知识导图"
+                        : loadingTask === "study" ? "正在整理原理和术语" : "正在生成译文"}
+                  progress={imageUpload?.progress}
+                  detail={imageUpload ? undefined : "已用时 " + loadingElapsed + " 秒"}
+                />}
                 <div className="flex flex-wrap items-center gap-3 pt-2">
                   <button
                     id="upload-button"
@@ -1208,6 +1226,8 @@ export default function Home() {
         {/* Chat FAB */}
         <button
           id="ai-chat-button"
+          aria-label={chatOpen ? "关闭助教对话" : "打开助教对话"}
+          aria-expanded={chatOpen}
           onClick={() => setChatOpen(!chatOpen)}
           className="relative w-14 h-14 rounded-full bg-gradient-to-br from-primary to-primary-light text-white shadow-xl shadow-primary/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all duration-300 animate-float"
         >
@@ -1217,9 +1237,13 @@ export default function Home() {
 
       {/* ===== Chat Panel ===== */}
       {chatOpen && (
-        <div className="fixed bottom-24 right-6 z-50 w-[400px] bg-card-bg rounded-2xl border border-card-border shadow-2xl shadow-primary/10 overflow-hidden animate-fade-in-up">
+        <div
+          role="dialog"
+          aria-label="AI 助教对话"
+          className="fixed bottom-24 right-6 z-50 flex max-h-[calc(100dvh_-_7.5rem)] w-[calc(100%_-_3rem)] max-w-[400px] flex-col bg-card-bg rounded-2xl border border-card-border shadow-2xl shadow-primary/10 overflow-hidden animate-fade-in-up"
+        >
           {/* Chat Header */}
-          <div className="px-5 py-3.5 bg-gradient-to-r from-primary-dark to-primary text-white flex items-center gap-3">
+          <div className="px-5 py-3.5 bg-gradient-to-r from-primary-dark to-primary text-white flex shrink-0 items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
               <SparkleIcon />
             </div>
@@ -1248,14 +1272,14 @@ export default function Home() {
 
           {/* Context Indicator */}
           {translationResult && (
-            <div className="px-4 py-2 bg-primary/5 border-b border-card-border/50 flex items-center gap-2">
+            <div className="px-4 py-2 bg-primary/5 border-b border-card-border/50 flex shrink-0 items-center gap-2">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary shrink-0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
               <span className="text-[10px] text-text-muted truncate">已关联当前翻译结果，可直接追问相关问题</span>
             </div>
           )}
 
           {/* Chat Body */}
-          <div ref={chatBodyRef} className="h-[320px] p-4 overflow-y-auto bg-background/50 space-y-3">
+          <div ref={chatBodyRef} role="log" aria-label="助教消息" className="h-[320px] min-h-0 p-4 overflow-y-auto bg-background/50 space-y-3">
             {/* Welcome message (always visible) */}
             <div className="flex gap-2.5">
               <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white">
@@ -1339,6 +1363,7 @@ export default function Home() {
               />
               <button
                 onClick={handleChatSend}
+                aria-label="发送助教问题"
                 disabled={isChatLoading || !chatMessage.trim()}
                 className="w-8 h-8 rounded-lg bg-gradient-to-r from-primary to-primary-light text-white flex items-center justify-center hover:shadow-md transition-all duration-200 shrink-0 disabled:opacity-40 disabled:hover:shadow-none"
               >

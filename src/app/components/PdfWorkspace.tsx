@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent } from "react";
-import { BookOpen, ChevronLeft, ChevronRight, Download, FileText, FileUp, Image as ImageIcon, Loader2, Save, Send, X } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Download, FileText, FileUp, Image as ImageIcon, Save, Send, X } from "lucide-react";
 import MarkdownRenderer from "./MarkdownRenderer";
+import OperationProgress from "./OperationProgress";
 import { emptyPdfDetails, useAppSession } from "./AppSessionProvider";
 import { getLessonRecord, saveLessonRecord, type LessonRecord } from "@/lib/db";
 import { findPdfPageRequest, pdfPageTitle, resolvePdfPages, type PdfCoverage, type PdfSource } from "@/lib/pdfNavigation";
@@ -10,16 +11,21 @@ import { buildPdfStudyNoteMarkdown, downloadMarkdownFile } from "@/lib/markdownE
 import { isPdfFile, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, MAX_PDF_BYTES, MAX_SCAN_PAGES, MAX_SCAN_REQUEST_BYTES } from "@/lib/studyLimits";
 import { useLesson } from "@/hooks/useLesson";
 import { studySaveError, usesCloudStudy } from "@/lib/studyStorage";
+import { postWithUploadProgress, type ProgressValue } from "@/lib/uploadProgress";
 
 type DocumentAnswer = { reply: string; sources?: PdfSource[] };
 type SummaryAnswer = { summary: string; coverage: PdfCoverage };
 
-async function askPdf<T>(body: object, signal: AbortSignal): Promise<T> {
+async function askPdf<T>(
+  body: object,
+  signal: AbortSignal,
+  onUpload?: (progress: ProgressValue | null) => void,
+): Promise<T> {
   const json = JSON.stringify(body);
   if (new Blob([json]).size > MAX_SCAN_REQUEST_BYTES) {
     throw new Error("请求超过大小限制，请减少选页或换用文本问答。");
   }
-  const response = await fetch("/api/pdf-chat", {
+  const response = onUpload ? await postWithUploadProgress("/api/pdf-chat", json, signal, onUpload) : await fetch("/api/pdf-chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: json,
@@ -68,8 +74,10 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
   } = pdf;
   const [imageMode, setImageMode] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [extractProgress, setExtractProgress] = useState<ProgressValue | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
+  const [questionProgress, setQuestionProgress] = useState<{ label: string; progress?: ProgressValue }>({ label: "正在查看课件" });
   const [isSaving, setIsSaving] = useState(false);
   const [summaryError, setSummaryError] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -122,6 +130,7 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
     setPageInput("");
     setPendingPdfRecord(null);
     setIsExtracting(false);
+    setExtractProgress(null);
   };
 
   const runSummary = async (pages: string[], labels: (string | null)[], signal: AbortSignal) => {
@@ -168,11 +177,14 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
     setScanPageSelection("");
     setImageMode(false);
     setPageInput("");
+    setExtractProgress(null);
     setIsExtracting(true);
     try {
       const { extractTextFromPdf } = await import("@/lib/pdfParser");
       signal.throwIfAborted();
-      const result = await extractTextFromPdf(file, signal);
+      const result = await extractTextFromPdf(file, signal, (completed, total) => {
+        if (!signal.aborted) setExtractProgress({ completed, total });
+      });
       if (signal.aborted) return;
       setPageCount(result.pageCount);
       setPdfPages(result.pages);
@@ -271,6 +283,10 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
       const pageRequest = findPdfPageRequest(question);
       if (pageRequest) {
         selected = resolvePdfPages(pageRequest, pageCount, details.labels);
+      } else if (/上(?:一)?页|前一页|下(?:一)?页|后一页/u.test(question)) {
+        const page = activePage + (/下(?:一)?页|后一页/u.test(question) ? 1 : -1);
+        if (page < 1 || page > pageCount) throw new Error("当前页已在课件边界，请指定课件中的页码。");
+        selected = [page];
       } else if (/这(?:一)?页|本页|当前页|\b(?:this|cette) page\b/iu.test(question)) {
         selected = [activePage];
       } else if (useImages && scanPageSelection.trim()) {
@@ -291,23 +307,34 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
     setChatMessages((previous) => [...previous, userMessage]);
     setChatInput("");
     setFeedback("");
+    setQuestionProgress({ label: "正在根据课件生成回答" });
     setIsAsking(true);
     try {
       let data: DocumentAnswer;
       if (visual) {
         const { renderPdfPagesToImages } = await import("@/lib/pdfParser");
-        const { pages } = await renderPdfPagesToImages(pdfFile, selected.length ? selected : [activePage], signal);
+        const target = selected.length ? selected : [activePage];
+        setQuestionProgress({ label: "正在准备课件页图", progress: { completed: 0, total: target.length } });
+        const { pages } = await renderPdfPagesToImages(pdfFile, target, signal, (completed, total) => {
+          if (!signal.aborted) setQuestionProgress({ label: "正在准备课件页图", progress: { completed, total } });
+        });
+        signal.throwIfAborted();
+        setQuestionProgress({ label: "正在上传课件页图" });
         data = await askPdf<DocumentAnswer>({
           mode: "scan_pages", pageCount, pageLabels: details.labels,
           pageNumbers: pages.map((item) => item.pageNumber),
           pageImages: pages.map((item) => item.imageUrl), messages, deepMode,
-        }, signal);
+        }, signal, (progress) => {
+          if (!signal.aborted) setQuestionProgress(progress
+            ? { label: "正在上传课件页图", progress }
+            : { label: "正在根据课件生成回答" });
+        });
       } else {
         const previousPages = chatMessages.findLast((message) => message.sources?.length)
-          ?.sources?.map((source) => source.page);
+          ?.sources?.map((source) => source.page) ?? [activePage];
         data = await askPdf<DocumentAnswer>({
           pdfPages, pageLabels: details.labels, messages, deepMode,
-          ...(selected.length ? { pageNumbers: selected } : previousPages?.length ? { previousPages } : {}),
+          ...(selected.length ? { pageNumbers: selected } : { previousPages }),
         }, signal);
       }
       if (!signal.aborted) {
@@ -399,6 +426,13 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
               <button type="button" onClick={resetDocument} className={button} aria-label="移除文件" title="移除文件"><X size={15} /></button>
             </div>}
           </div>
+          {isExtracting && <div className="border-b border-card-border px-4 py-3">
+            <OperationProgress
+              label={extractProgress ? "正在提取课件文字" : "正在读取 PDF"}
+              progress={extractProgress}
+              detail={extractProgress ? extractProgress.completed + " / " + extractProgress.total + " 页" : undefined}
+            />
+          </div>}
           {showFile ? (
             <>
               <div className="flex flex-wrap items-center gap-2 border-b border-card-border px-3 py-2.5">
@@ -424,8 +458,7 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
                     </button>
                   )}
                 </div>
-                {isExtracting && <p className="text-sm text-text-muted">正在后台提取页面文字，课件可先预览。</p>}
-                {isSummarizing && <p className="text-sm text-text-muted">正在生成摘要，仍可翻页和提问。</p>}
+                {isSummarizing && <OperationProgress label="正在生成课件摘要" detail="可继续翻页和提问" />}
                 {pdfExtractReason && <p className="text-sm text-text-muted">{pdfExtractReason}</p>}
                 {summaryError && <p role="alert" className="text-sm text-rose-700">{summaryError}</p>}
                 {coverage && <p className="mt-1 text-xs text-text-muted">覆盖 {coverage.pages.length} / {coverage.total} 页的{coverage.excerpted ? "文字摘录" : "可提取文字"}</p>}
@@ -464,7 +497,7 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
           </div>
           <div ref={chatBody} className="flex-1 space-y-3 overflow-y-auto p-4 lg:max-h-[70vh]">
             {!chatMessages.length && <p className="text-sm leading-6 text-text-muted">
-              {showFile ? "可以问「第 3 页有哪些知识点？」，也可以先翻页再问「这页讲什么？」。解读图表时可开启「看图提问」，直接读取 PDF 页图。" : "上传 PDF 后，就可以按页码提问或查找课件里的术语。"}
+              {showFile ? "可以问「讲解一下第一页」或「这页讲什么？」。解读图表时可开启「看图提问」，直接读取 PDF 页图。" : "上传 PDF 后，就可以按页码提问或查找课件里的术语。"}
             </p>}
             {showFile && chatMessages.map((message, index) => (
               <div key={index} className={message.role === "user"
@@ -492,7 +525,7 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
                 )}
               </div>
             ))}
-            {isAsking && <p className="flex items-center gap-2 text-sm text-text-muted"><Loader2 size={14} className="animate-spin" />正在查看课件…</p>}
+            {isAsking && <OperationProgress {...questionProgress} />}
           </div>
           <form onSubmit={handleQuestion} className="space-y-2 border-t border-card-border p-3">
             {useImages && <label className="flex flex-wrap items-center gap-2 text-xs text-text-muted">

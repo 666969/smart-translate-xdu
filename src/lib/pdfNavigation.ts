@@ -18,21 +18,67 @@ interface PdfPageRequest {
   numbering: "pdf" | "label" | "auto";
 }
 
+const pageNumber = "[0-9零〇一二两兩三四五六七八九十百千万萬]+";
+const pageRange = "[-~—–到至]";
+const pageReference = new RegExp(
+  "(?:(PDF(?:\\s*物理)?|课件|課件|讲义|講義|幻灯片|幻燈片)\\s*)?第\\s*(" + pageNumber +
+  ")\\s*(?:[页頁]\\s*)?(?:" + pageRange + "\\s*第?\\s*(" + pageNumber + ")\\s*)?[页頁]",
+  "iu",
+);
+const barePageReference = new RegExp("^(" + pageNumber + ")(?:\\s*" + pageRange + "\\s*(" + pageNumber + "))?$", "u");
+const chineseDigits = new Map([..."零一二三四五六七八九"].map((digit, index) => [digit, index]));
+chineseDigits.set("〇", 0).set("两", 2).set("兩", 2);
+const chineseUnits = new Map([["十", 10], ["百", 100], ["千", 1000], ["万", 10000], ["萬", 10000]]);
+
+function parsePageNumber(value: string) {
+  if (/^\d+$/u.test(value)) return Number(value);
+  const symbols = Array.from(value);
+  if (symbols.every((symbol) => chineseDigits.has(symbol))) {
+    return Number(symbols.map((symbol) => chineseDigits.get(symbol)).join(""));
+  }
+  let result = 0;
+  let section = 0;
+  let digit: number | undefined;
+  let previousUnit = 10000;
+  for (const symbol of symbols) {
+    const number = chineseDigits.get(symbol);
+    if (number !== undefined) {
+      if (digit) return NaN;
+      digit = number;
+      continue;
+    }
+    const unit = chineseUnits.get(symbol);
+    if (unit === 10000 && !result && section + (digit ?? 0) > 0) {
+      result = (section + (digit ?? 0)) * unit;
+      section = 0;
+      previousUnit = 10000;
+    } else if (unit && unit < previousUnit) {
+      section += (digit ?? 1) * unit;
+      previousUnit = unit;
+    } else {
+      return NaN;
+    }
+    digit = undefined;
+  }
+  return result + section + (digit ?? 0);
+}
+
 export function findPdfPageRequest(text: string, bare = false): PdfPageRequest | null {
-  const reference = text.match(/(?:(PDF(?:\s*物理)?|课件|讲义|幻灯片)\s*)?第\s*(\d+)\s*(?:页\s*)?(?:(?:-|~|—|–|到|至)\s*第?\s*(\d+)\s*)?页/iu);
-  const english = text.match(/\b(?:page|pp?\.?)\s+(\d+)(?:\s*[-–]\s*(\d+))?\b/iu);
-  const input = bare ? text.trim().match(/^(\d+)(?:\s*[-~—–到至]\s*(\d+))?$/u) : null;
+  const normalized = text.normalize("NFKC");
+  const reference = normalized.match(pageReference);
+  const english = normalized.match(/\b(?:page|pp?\.?)\s+(\d+)(?:\s*[-–]\s*(\d+))?\b/iu);
+  const input = bare ? normalized.trim().match(barePageReference) : null;
   if (reference) {
     const [, prefix, start, end = start] = reference;
     return {
-      start: Number(start),
-      end: Number(end),
+      start: parsePageNumber(start),
+      end: parsePageNumber(end),
       numbering: /^pdf/i.test(prefix ?? "") ? "pdf" : prefix ? "label" : "auto",
     };
   }
   const match = english ?? input;
   if (!match) return null;
-  return { start: Number(match[1]), end: Number(match[2] ?? match[1]), numbering: "auto" };
+  return { start: parsePageNumber(match[1]), end: parsePageNumber(match[2] ?? match[1]), numbering: "auto" };
 }
 
 export function resolvePdfPages(request: PdfPageRequest, pageCount: number, labels: (string | null)[]) {

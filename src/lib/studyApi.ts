@@ -26,7 +26,7 @@ export function textProviderErrorResponse(status: number | undefined, fallback: 
   return NextResponse.json({ error: fallback }, { status: status === 429 ? 429 : 502 });
 }
 
-function boundedBody(request: Request, maxBytes: number) {
+export function boundedBody(request: Request, maxBytes: number) {
   const tooLarge = () => new StudyApiError("请求内容过大，请缩小文件或减少上传页数。", 413);
   if (Number(request.headers.get("content-length") ?? 0) > maxBytes) {
     throw tooLarge();

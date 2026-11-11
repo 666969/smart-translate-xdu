@@ -119,13 +119,18 @@ function determineExtractStatus(pages: string[], pageCount: number) {
   };
 }
 
-export async function extractTextFromPdf(file: File, signal?: AbortSignal): Promise<PdfParseResult> {
+export async function extractTextFromPdf(
+  file: File,
+  signal?: AbortSignal,
+  onProgress?: (completed: number, total: number) => void,
+): Promise<PdfParseResult> {
   try {
     const pdf = await openPdf(file);
     signal?.throwIfAborted();
     if (pdf.numPages > MAX_PDF_PAGES) {
       throw new RangeError("课件超过 " + MAX_PDF_PAGES + " 页，请拆分后上传。");
     }
+    onProgress?.(0, pdf.numPages);
 
     const pages: string[] = [];
     const footerCandidates: number[][] = [];
@@ -153,6 +158,7 @@ export async function extractTextFromPdf(file: File, signal?: AbortSignal): Prom
       if (textLength > MAX_PDF_TEXT_CHARS) throw new RangeError("课件文字过多，请拆分后上传。");
       pages.push(pageText);
       footerCandidates.push(footer);
+      onProgress?.(i, pdf.numPages);
     }
 
     const documentLabels = await pdf.getPageLabels();
@@ -203,7 +209,8 @@ function dedupeAndClampPageNumbers(pageNumbers: number[], pageCount: number) {
 export async function renderPdfPagesToImages(
   file: File,
   pageNumbers: number[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: (completed: number, total: number) => void,
 ) {
   const pdf = await openPdf(file);
   signal?.throwIfAborted();
@@ -211,6 +218,8 @@ export async function renderPdfPagesToImages(
 
   const targetWidth = safePageNumbers.length > 3 ? 900 : 1280;
   const quality = safePageNumbers.length > 3 ? 0.72 : 0.86;
+  let completed = 0;
+  onProgress?.(completed, safePageNumbers.length);
 
   const renderedPages = await Promise.all(
     safePageNumbers.map(async (pageNumber) => {
@@ -237,7 +246,9 @@ export async function renderPdfPagesToImages(
       try {
         await task.promise;
         signal?.throwIfAborted();
-        return { pageNumber, imageUrl: canvas.toDataURL("image/jpeg", quality) };
+        const imageUrl = canvas.toDataURL("image/jpeg", quality);
+        onProgress?.(++completed, safePageNumbers.length);
+        return { pageNumber, imageUrl };
       } finally {
         signal?.removeEventListener("abort", cancel);
         canvas.width = 0;

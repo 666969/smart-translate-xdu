@@ -3,6 +3,7 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { AlertCircle, Bookmark, BookOpen, Download, Globe, Mic, Monitor, Square } from "lucide-react";
 import Header from "./Header";
+import OperationProgress from "./OperationProgress";
 import { useLesson } from "@/hooks/useLesson";
 import { glossaryData } from "@/data/glossaryData";
 import { saveLessonRecord } from "@/lib/db";
@@ -539,12 +540,11 @@ function LiveSession({ ownerId, lesson, loading }) {
             当前浏览器无法共享并转写标签页音频，可以使用麦克风模式。
           </p>}
           {capabilities && !canMic && <p className="mt-2 text-xs text-text-muted">当前浏览器的麦克风识别不可用。</p>}
-          {stage === "starting" && <p role="status" className="mt-2 text-xs text-primary">
-            {preparingModel
-              ? modelProgress >= 100 ? "模型下载完成，正在启动语音识别…"
-                : "正在准备设备端语音模型。首次需下载约 100 MB" + (modelProgress > 0 ? "，已下载 " + modelProgress + "%。" : "。")
-              : "正在开启音频输入…"}
-          </p>}
+          {stage === "starting" && <div className="mt-3 max-w-md">
+            {preparingModel && modelProgress < 100
+              ? <OperationProgress label="正在下载语音模型" detail="首次约 100 MB" progress={{ completed: modelProgress, total: 100 }} />
+              : <OperationProgress label={preparingModel ? "正在启动语音识别" : "正在开启音频输入"} />}
+          </div>}
           {inputLevel !== null && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
             <span>输入音量</span>
             <meter className="w-28" min={0} max={100} value={inputLevel} aria-label="输入音量" />
