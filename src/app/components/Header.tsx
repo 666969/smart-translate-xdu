@@ -1,121 +1,201 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, CircleHelp, FileText, Languages, Menu, Mic, NotebookPen, X } from "lucide-react";
+import { CircleHelp, Menu, X } from "lucide-react";
 import AuthControls from "./auth/AuthControls";
 import LessonPicker from "./LessonPicker";
 
-const navigation = [
-  { label: "教材翻译", href: "/", Icon: Languages },
-  { label: "随堂同传", href: "/live", Icon: Mic },
-  { label: "文献精读", href: "/pdf", Icon: FileText },
-  { label: "专业名词库", href: "/glossary", Icon: BookOpen },
-  { label: "笔记本", href: "/notebook", Icon: NotebookPen },
-];
-
-const help = [
-  ["教材翻译", "输入外文或粘贴截图，先看译文，再按需生成原理讲解与术语。"],
-  ["随堂同传", "选择语言和收音方式，查看字幕、标记片段并导出文字记录。"],
-  ["文献精读", "上传 PDF 后翻页或提问，点击回答下方的来源回到课件原页。"],
-  ["专业名词库", "按教材和章节浏览，或用中文、英语、法语搜索术语。"],
-  ["笔记本", "在这里查看生词、错题和课程档案。"],
-];
+// Logo Icon extracted from page.tsx
+export function LogoIcon() {
+  return (
+    <svg
+      width="36"
+      height="36"
+      viewBox="0 0 36 36"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect width="36" height="36" rx="8" fill="url(#logo-grad)" />
+      <text
+        x="18"
+        y="24"
+        textAnchor="middle"
+        fill="white"
+        fontSize="16"
+        fontWeight="700"
+        fontFamily="Inter, sans-serif"
+      >
+        译
+      </text>
+      <defs>
+        <linearGradient id="logo-grad" x1="0" y1="0" x2="36" y2="36">
+          <stop stopColor="#3b82f6" />
+          <stop offset="1" stopColor="#06b6d4" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
 
 export default function Header() {
   const pathname = usePathname();
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  useEffect(() => {
-    if (!isHelpOpen) return;
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setIsHelpOpen(false); };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [isHelpOpen]);
+  const navLinks = [
+    { name: "教材翻译", path: "/" },
+    { name: "专业名词库", path: "/glossary" },
+    { name: "随堂同传", path: "/live" },
+    { name: "笔记本", path: "/notebook" },
+    { name: "文献精读", path: "/pdf" },
+  ];
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-card-border bg-white/95 backdrop-blur">
-        <div className="study-shell">
-          <div className="flex h-16 items-center justify-between gap-3">
-            <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="智译西电首页">
-              <span aria-hidden="true" className="site-mark">译</span>
-              <span className="flex flex-col">
-                <span className="text-[17px] font-bold tracking-tight text-foreground">智译西电</span>
-                <span className="hidden font-mono text-[9px] font-semibold tracking-[0.12em] text-text-muted sm:block">XDU STUDY DESK</span>
-              </span>
+      <nav className="sticky top-0 z-40 glass border-b border-card-border/50">
+        <div className="max-w-[1440px] mx-auto px-6 lg:px-10">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo & Title */}
+            <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity cursor-pointer">
+              <LogoIcon />
+              <div className="flex flex-col">
+                <span className="text-xl font-bold gradient-text tracking-tight">
+                  智译西电
+                </span>
+                <span className="text-[10px] text-text-muted -mt-0.5 tracking-widest uppercase">
+                  Smart Translation · XDU
+                </span>
+              </div>
             </Link>
 
-            <nav aria-label="主导航" className="hidden items-center gap-0.5 lg:flex">
-              {navigation.map(({ label, href, Icon }) => (
-                <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined}
-                  className="study-nav-link">
-                  <Icon size={15} aria-hidden="true" />{label}
+            {/* Right Nav */}
+            <div className="hidden lg:flex items-center gap-4 text-sm font-medium">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.path}
+                  href={link.path}
+                  className={`transition-colors duration-200 ${
+                    pathname === link.path ? "text-primary font-semibold" : "text-text-muted hover:text-primary"
+                  }`}
+                >
+                  {link.name}
                 </Link>
               ))}
-            </nav>
-
-            <div className="hidden shrink-0 items-center gap-2 lg:flex">
-              <button className="study-icon-button" onClick={() => setIsHelpOpen(true)} aria-label="打开使用帮助" title="使用帮助">
-                <CircleHelp size={18} />
+              <button
+                onClick={() => setIsHelpOpen(true)}
+                className="text-text-muted hover:text-primary transition-colors duration-200"
+              >
+                使用帮助
               </button>
+              <div className="h-5 w-px bg-card-border" />
               <LessonPicker />
               <AuthControls />
             </div>
 
-            <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
-              <span className="hidden sm:block">
-                <button className="study-icon-button" onClick={() => setIsHelpOpen(true)} aria-label="打开使用帮助">
-                  <CircleHelp size={18} />
-                </button>
-              </span>
+            <div className="flex items-center gap-2 lg:hidden">
+              <button
+                onClick={() => setIsHelpOpen(true)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-card-border/70 bg-white/80 text-text-muted shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:text-primary"
+                aria-label="打开使用帮助"
+              >
+                <CircleHelp size={18} />
+              </button>
               <AuthControls compact />
-              <button className="study-icon-button" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                aria-label={isMobileMenuOpen ? "收起导航" : "展开导航"} aria-expanded={isMobileMenuOpen} aria-controls="mobile-navigation">
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-card-border/70 bg-white/80 text-text-muted shadow-sm transition-all duration-300 hover:text-primary"
+                aria-label="Toggle menu"
+              >
                 {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
               </button>
             </div>
           </div>
+
+          {/* Mobile Menu Dropdown */}
           {isMobileMenuOpen && (
-            <nav id="mobile-navigation" aria-label="移动端导航" className="grid gap-1.5 border-t border-card-border py-3 lg:hidden">
-              <div className="mb-1 flex items-center justify-between">
-                <button onClick={() => { setIsMobileMenuOpen(false); setIsHelpOpen(true); }} className="study-nav-link">
-                  <CircleHelp size={15} />使用帮助
-                </button>
-                <LessonPicker />
-              </div>
-              {navigation.map(({ label, href, Icon }) => (
-                <Link key={href} href={href} aria-current={pathname === href ? "page" : undefined}
-                  onClick={() => setIsMobileMenuOpen(false)} className="study-nav-link">
-                  <Icon size={16} aria-hidden="true" />{label}
+            <div className="lg:hidden py-4 border-t border-card-border/50 animate-fade-in flex flex-col gap-2">
+              <div className="flex justify-end px-4"><LessonPicker /></div>
+              {navLinks.map((link) => (
+                <Link
+                  key={link.path}
+                  href={link.path}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`px-4 py-3 rounded-xl transition-colors text-sm font-medium ${
+                    pathname === link.path
+                      ? "bg-primary/10 text-primary"
+                      : "text-text-muted hover:bg-slate-50 hover:text-primary"
+                  }`}
+                >
+                  {link.name}
                 </Link>
               ))}
-            </nav>
+            </div>
           )}
         </div>
-      </header>
+      </nav>
 
+      {/* --- Help Modal --- */}
       {isHelpOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
-          onClick={(event) => { if (event.target === event.currentTarget) setIsHelpOpen(false); }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="help-title" className="study-card max-h-[90dvh] w-full max-w-md overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-card-border px-5 py-4">
-              <h2 id="help-title" className="text-lg font-semibold">使用帮助</h2>
-              <button autoFocus className="study-icon-button" onClick={() => setIsHelpOpen(false)} aria-label="关闭使用帮助"><X size={18} /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-zoom-in">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">使用帮助 📖</h3>
+              <button
+                onClick={() => setIsHelpOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
             </div>
-            <dl className="space-y-4 p-5 text-sm">
-              {help.map(([label, description]) => (
-                <div key={label}>
-                  <dt className="font-semibold text-foreground">{label}</dt>
-                  <dd className="mt-1 leading-6 text-text-muted">{description}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
+            <div className="p-6 space-y-4 text-sm text-gray-600 leading-relaxed">
+              <p>
+                欢迎使用 <strong className="text-primary">智译西电</strong> —— 专为中外合作办学的理工科学生打造的翻译与学习助手！
+              </p>
+              <ul className="space-y-2 list-none p-0">
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>教材翻译：</strong>在左侧输入法语/英语文本，或上传课件截图，AI 将为您输出符合理工科语境的精准翻译与知识脉络。</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>AI 助教聊天：</strong>点击右下角悬浮按钮，您可以针对翻译结果与 AI 助教进行多轮深度追问。</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>专业名词库：</strong>我们梳理了海量中外英理工科词汇（如 STM32, SAR 等），欢迎随时检索学习。</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>笔记本：</strong>包含生词本与错题本。关键词旁点 ⭐ 收藏到生词本，测验答错自动收录错题本，支持艾宾浩斯闪卡复习。</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>文献精读：</strong>上传完整 PDF 课件，AI 自动生成全文摘要，支持对文献内容任意追问。</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>法语朗读：</strong>每个法语术语旁都有 🔊 按钮，点击即可听到标准法语发音。</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5">🔹</span> 
+                  <span><strong>导出笔记：</strong>翻译完成后可一键导出 Markdown 格式的学习笔记。</span>
+                </li>
+              </ul>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setIsHelpOpen(false)}
+                className="px-5 py-2 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors"
+              >
+                我知道了
+              </button>
+            </div>
+          </div>
         </div>
       )}
+
     </>
   );
 }

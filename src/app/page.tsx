@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect, useEffectEvent, lazy, Suspense } from "react";
-import Link from "next/link";
 import type { KeywordItem } from "./components/KeywordGlossary";
 import { normalizeTranslationLayout } from "@/lib/translationLayout";
 import { useAppSession } from "./components/AppSessionProvider";
@@ -15,7 +14,7 @@ const TextbookTranslationRenderer = lazy(
   () => import("./components/TextbookTranslationRenderer")
 );
 import Header from "./components/Header";
-import { ArrowDown, ArrowRight, BookOpen, FileText, Images, Languages, Loader2, MessageCircle, Mic, NotebookPen, Paperclip, Save, Send, Sparkles, Upload, X } from "lucide-react";
+import { BookOpen, Save } from "lucide-react";
 import { useLesson } from "@/hooks/useLesson";
 import { saveLessonRecord } from "@/lib/db";
 import { studySaveError, usesCloudStudy } from "@/lib/studyStorage";
@@ -79,32 +78,150 @@ function normalizeKeywordItems(value: unknown): KeywordItem[] {
     .filter((item) => item !== null);
 }
 
+/* ========== SVG Icon Components ========== */
 
-const resultTabs = [
-  { id: "translation", label: "译文" },
-  { id: "analysis", label: "原理讲解" },
-  { id: "terms", label: "专业术语" },
-] as const;
-type ResultView = (typeof resultTabs)[number]["id"];
-
-const studyLinks = [
-  { href: "/live", title: "随堂同传", description: "听课时查看双语字幕", Icon: Mic },
-  { href: "/pdf", title: "文献精读", description: "读 PDF 并回到原文核对", Icon: FileText },
-  { href: "/glossary", title: "专业名词库", description: "按教材查阅中英法术语", Icon: BookOpen },
-  { href: "/notebook", title: "笔记本", description: "复习生词、错题和课堂笔记", Icon: NotebookPen },
-];
-
-function ResultNotice({ busy = false, title, description }: { busy?: boolean; title: string; description: string }) {
+function UploadIcon() {
   return (
-    <div role={busy ? "status" : undefined} className="flex min-h-44 flex-col items-center justify-center rounded-xl border border-dashed border-card-border bg-background/55 px-5 py-6 text-center">
-      <div className="mb-3 grid size-10 place-items-center rounded-xl bg-study-soft text-primary">
-        {busy ? <Loader2 size={20} className="animate-spin" /> : <FileText size={20} aria-hidden="true" />}
-      </div>
-      <p className="text-sm font-semibold text-foreground">{title}</p>
-      <p className="mt-1 text-xs leading-5 text-text-muted">{description}</p>
-    </div>
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 14v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
+      <polyline points="7 7 10 3 13 7" />
+      <line x1="10" y1="3" x2="10" y2="13" />
+    </svg>
   );
 }
+
+function TranslateIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 8l6 10" />
+      <path d="M4 14h8" />
+      <path d="M10 6h8" />
+      <path d="M14 6v2a4 4 0 0 0 4 4" />
+      <path d="M18 6v2a4 4 0 0 1-4 4" />
+    </svg>
+  );
+}
+
+function FormulaIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 4h6v6H4z" />
+      <path d="M14 4l6 6" />
+      <path d="M20 4l-6 6" />
+      <path d="M4 16l3 4 3-4" />
+      <path d="M14 18h6" />
+    </svg>
+  );
+}
+
+function ChatIcon() {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+    </svg>
+  );
+}
+
+function SparkleIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+    >
+      <path d="M8 0l2 5.5L16 8l-6 2.5L8 16l-2-5.5L0 8l6-2.5L8 0z" />
+    </svg>
+  );
+}
+
+function ImageIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+/* ========== Main Page Component ========== */
 
 export default function Home() {
   const { home } = useAppSession();
@@ -154,7 +271,6 @@ export default function Home() {
     setErrorMessage,
   } = home;
   const [isChatLoading, setIsChatLoading] = useState(false);
-  const [resultView, setResultView] = useState<ResultView>("translation");
   const [loadingTask, setLoadingTask] = useState<TranslateTask | null>(null);
   const isLoading = loadingTask !== null;
   const [saveNotice, setSaveNotice] = useState("");
@@ -445,311 +561,763 @@ export default function Home() {
         ? `${documentFiles.length} 张图片`
         : "";
 
-
-  const hasResult = mode === "snippet"
-    ? Boolean(translationResult || analysisResult || keywordsResult || keywordItemsResult.length)
-    : Boolean(mermaidData || quizData?.length);
-
-  function runTask(task: TranslateTask) {
-    if (task === "quick") setResultView("translation");
-    if (task === "study") setResultView("analysis");
-    void handleTranslate(task);
-  }
-
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* ===== Top Navigation Bar (Shared) ===== */}
       <Header />
-      <main className="study-shell pb-24 pt-5 sm:pt-7">
-        <section className="study-hero grid items-center gap-6 px-5 py-5 sm:px-8 sm:py-7 lg:grid-cols-[minmax(0,1fr)_23rem] lg:px-9">
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 text-xs font-semibold tracking-wide text-blue-100">
-              <span className="size-1.5 rounded-full bg-amber-300" aria-hidden="true" />智译西电学习工作台
-            </p>
-            <h1 className="mt-3 text-[clamp(1.9rem,4.2vw,3rem)] font-semibold leading-[1.16] tracking-tight">外语课件学习台</h1>
-            <p className="mt-3 max-w-lg text-sm leading-7 text-blue-50/90 sm:text-base">
-              输入法语或英语课件，查看中文译文、公式讲解和专业术语。
-            </p>
-            <div className="mt-5 flex flex-wrap items-center gap-2.5">
-              <a href="#translation-workspace" className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-primary-dark hover:bg-blue-50">
-                <ArrowDown size={14} aria-hidden="true" />开始翻译
-              </a>
-              <span className="rounded-lg border border-white/25 px-3 py-2 text-xs font-medium text-blue-50">法语 · 英语 · 中文</span>
-            </div>
-          </div>
 
-          <div aria-label="双语对照示例" className="hidden rounded-xl border border-white/25 bg-white/10 p-4 lg:block">
-            <div className="mb-3 flex items-center justify-between text-xs font-medium text-blue-50">
-              <span className="flex items-center gap-1.5"><Languages size={15} aria-hidden="true" />双语对照示例</span>
-              <span className="rounded bg-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-950">基础电子</span>
-            </div>
-            <div className="space-y-2">
-              <div className="rounded-lg border border-white/15 bg-slate-950/20 px-3 py-2.5">
-                <p className="font-mono text-[10px] font-semibold tracking-widest text-blue-100">FR · 原文</p>
-                <p lang="fr" className="mt-1 text-sm leading-5 text-white">Le condensateur stocke de l’énergie électrique.</p>
+      {/* ===== Hero Subtitle ===== */}
+      <div className="text-center pt-8 pb-4 animate-fade-in-up">
+        <p className="text-sm text-text-muted">
+          <SparkleIcon />{" "}
+          <span className="ml-1">
+            面向中外合作办学理工科学生 · 法语/英语教材智能翻译与解析
+          </span>
+        </p>
+      </div>
+
+      {/* ===== Main Content ===== */}
+      <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 lg:px-10 pb-28">
+        {(mode === "snippet" ? translationResult : mermaidData || quizData?.length) ? (
+          <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+            {saveNotice && <span role="status" className="text-xs text-text-muted">{saveNotice}</span>}
+            <button type="button" onClick={() => void saveStudyNote()} disabled={isSaving || authLoading}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-card-border bg-white px-3 py-2 text-xs text-primary disabled:opacity-50">
+              <Save size={15} />{isSaving ? "保存中" : "保存到本节课"}
+            </button>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-6 items-start">
+          <div
+            className={`animate-fade-in-up-delay-1 gap-5 ${
+              mode === "snippet"
+                ? "grid xl:grid-rows-[minmax(430px,1fr)_minmax(320px,1fr)]"
+                : "flex flex-col"
+            }`}
+          >
+            <div className="bg-card-bg rounded-3xl border border-card-border shadow-sm card-hover overflow-hidden flex h-full flex-col">
+              <div className="flex px-4 pt-4 border-b border-card-border/60 bg-background/30">
+                <button
+                  onClick={() => handleModeChange("snippet")}
+                  className={`flex-1 pb-3 text-sm font-semibold transition-all duration-200 border-b-2 ${
+                    mode === "snippet"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-text-muted hover:text-foreground hover:border-text-muted/30"
+                  }`}
+                >
+                  <div className="flex flex-col items-center gap-1">
+                    <TranslateIcon />
+                    <span>片段速译 (Snippet)</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleModeChange("document")}
+                  className={`flex-1 pb-3 text-sm font-semibold transition-all duration-200 border-b-2 ${
+                    mode === "document"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-text-muted hover:text-foreground hover:border-text-muted/30"
+                  }`}
+                >
+                  <div className="flex flex-col items-center gap-1">
+                    <BookOpen />
+                    <span>课件精读 (Document)</span>
+                  </div>
+                </button>
               </div>
-              <div className="rounded-lg bg-white px-3 py-2.5">
-                <p className="text-[10px] font-semibold tracking-wide text-primary">中文 · 译文</p>
-                <p className="mt-1 text-sm font-medium leading-5 text-foreground">电容器储存电能。</p>
-              </div>
-            </div>
-          </div>
-        </section>
 
-        <section id="translation-workspace" className="mt-7 scroll-mt-20">
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">教材翻译</h2>
-              <p className="mt-1 text-sm text-text-muted">支持文本、课件截图和多页截图精读。</p>
-            </div>
-            <div className="study-segment" role="group" aria-label="翻译模式">
-              <button type="button" aria-pressed={mode === "snippet"} onClick={() => handleModeChange("snippet")}>
-                <Languages size={15} aria-hidden="true" />片段速译
-              </button>
-              <button type="button" aria-pressed={mode === "document"} onClick={() => handleModeChange("document")}>
-                <Images size={15} aria-hidden="true" />课件精读
-              </button>
-            </div>
-          </div>
-
-          <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.94fr)_minmax(0,1.06fr)]">
-            <section className="study-card flex min-w-0 flex-col" aria-labelledby="input-heading">
-              <header className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border px-4 py-3 sm:px-5">
+              <div className="px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <span className="grid size-8 place-items-center rounded-lg bg-study-soft text-primary"><Paperclip size={16} aria-hidden="true" /></span>
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white">
+                    {mode === "snippet" ? <TranslateIcon /> : <BookOpen className="w-4 h-4" />}
+                  </div>
                   <div>
-                    <h3 id="input-heading" className="text-sm font-semibold">{mode === "snippet" ? "原文输入" : "课件截图"}</h3>
-                    <p className="mt-0.5 text-xs text-text-muted">{mode === "snippet" ? "输入文本或上传一张图" : "最多 5 张，总计 4 MB"}</p>
-                  </div>
-                </div>
-                {inputSummary && <span className="rounded-md bg-background px-2 py-1 text-xs text-text-muted">{inputSummary}</span>}
-              </header>
-
-              <div className="flex-1 space-y-3 p-4 sm:p-5">
-                <input ref={snippetFileInputRef} type="file" accept={IMAGE_MIME_TYPES.join(",")} className="hidden" onChange={handleSnippetFileChange} />
-                <input ref={documentFileInputRef} type="file" accept={IMAGE_MIME_TYPES.join(",")} multiple className="hidden" onChange={handleDocumentFileChange} />
-
-                {mode === "snippet" && (
-                  <>
-                    <label htmlFor="input-textarea" className="sr-only">外文原文</label>
-                    <textarea id="input-textarea" rows={4} value={snippetText}
-                      onChange={(event) => changeSnippetText(event.target.value)} maxLength={MAX_SNIPPET_CHARS}
-                      placeholder="粘贴法语或英语课件内容，也可以上传截图。"
-                      className="w-full resize-y rounded-xl border border-card-border bg-background/60 px-3.5 py-3 text-sm leading-6 text-foreground placeholder:text-text-light sm:min-h-36" />
-                    {snippetPreviewUrl && (
-                      <div className="flex min-w-0 items-center gap-3 rounded-xl border border-card-border p-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={snippetPreviewUrl} alt="片段截图预览" className="h-14 w-20 rounded-md object-contain" />
-                        <p className="min-w-0 flex-1 truncate text-xs font-medium text-text-muted">{snippetFile?.name || "课件截图"}</p>
-                        <button type="button" className="study-icon-button" onClick={handleRemoveSnippetImage} aria-label="移除截图"><X size={16} /></button>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {mode === "document" && documentPreviewUrls.length > 0 && (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {documentPreviewUrls.map((url, index) => (
-                      <div key={url} id={"document-image-" + (index + 1)} className="relative min-w-0 scroll-mt-24 overflow-hidden rounded-xl border border-card-border bg-background">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt={"课件预览 " + (index + 1)} className="h-24 w-full object-contain" />
-                        <div className="truncate border-t border-card-border bg-white px-2 py-1.5 text-[11px] text-text-muted">
-                          {documentFiles[index]?.name || "图 " + (index + 1)}
-                        </div>
-                        <button type="button" onClick={() => handleRemoveDocumentImage(index)} aria-label={"移除截图 " + (index + 1)}
-                          className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-lg border border-card-border bg-white text-text-muted hover:text-rose-700"><X size={15} /></button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {mode === "document" && !hasDocumentInput && (
-                  <div className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-card-border bg-background px-3 py-4 text-center">
-                    <Images size={23} className="text-primary-light" aria-hidden="true" />
-                    <p className="text-sm font-medium">上传或粘贴课件截图</p>
-                    <p className="text-xs text-text-muted">可以按页上传，再生成导图或小测。</p>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center gap-2.5">
-                  {!(mode === "document" && documentFiles.length >= MAX_IMAGE_COUNT) && (
-                    <button type="button" id="upload-button" className="study-button" onClick={mode === "snippet" ? openSnippetUpload : openDocumentUpload}>
-                      <Upload size={15} aria-hidden="true" />{mode === "snippet" ? "上传课件截图" : "上传多张截图"}
-                    </button>
-                  )}
-                  <span className="text-xs text-text-muted">支持 Ctrl+V 粘贴</span>
-                  {mode === "snippet" && (
-                    <button type="button" className="ml-auto text-xs font-semibold text-primary underline-offset-2 hover:underline" onClick={fillDemoSnippetText}>
-                      填入演示文本
-                    </button>
-                  )}
-                </div>
-                {errorMessage && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-800">{errorMessage}</p>}
-              </div>
-
-              <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-card-border bg-background/45 px-4 py-3 sm:px-5">
-                <div className="study-segment order-2 sm:order-1" role="group" aria-label="讲解方式">
-                  <button type="button" aria-pressed={!deepMode} onClick={() => setDeepMode(false)}>简明讲解</button>
-                  <button type="button" aria-pressed={deepMode} onClick={() => setDeepMode(true)}>深入讲解</button>
-                </div>
-                <div className="order-1 flex flex-wrap items-center gap-2 sm:order-2">
-                  <button type="button" className="study-button order-2 sm:order-1" disabled={isLoading || (mode === "snippet" && !translationResult)}
-                    onClick={() => runTask(mode === "snippet" ? "study" : "quiz")}>
-                    {loadingTask === "study" || loadingTask === "quiz" ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} aria-hidden="true" />}
-                    {mode === "snippet" ? "讲原理和术语" : "生成三语小测"}
-                  </button>
-                  <button type="button" id="translate-button" className="study-button study-button-primary order-1 sm:order-2" disabled={isLoading}
-                    onClick={() => runTask(mode === "snippet" ? "quick" : "mindmap")}>
-                    {loadingTask === "quick" || loadingTask === "mindmap" ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} aria-hidden="true" />}
-                    {mode === "snippet" ? "开始速译" : "生成知识导图"}
-                  </button>
-                </div>
-              </footer>
-            </section>
-
-            <section className="study-card flex min-w-0 flex-col overflow-hidden" aria-labelledby="result-heading">
-              <header className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border px-4 py-3 sm:px-5">
-                <div className="flex items-center gap-2.5">
-                  <span className="grid size-8 place-items-center rounded-lg bg-study-warm text-amber-800"><BookOpen size={16} aria-hidden="true" /></span>
-                  <div>
-                    <h3 id="result-heading" className="text-sm font-semibold">学习结果</h3>
-                    <p className="mt-0.5 text-xs text-text-muted">{mode === "snippet" ? "在这里查看译文、讲解和术语" : "课件知识导图与三语小测"}</p>
-                  </div>
-                </div>
-                {hasResult && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Suspense fallback={null}>
+                    <h2 className="text-base font-semibold text-foreground">
+                      {mode === "snippet" ? "片段速译输入" : "课件截图上传"}
+                    </h2>
+                    <p className="text-xs text-text-muted">
                       {mode === "snippet"
-                        ? <ExportButton mode="snippet" originalText={originalTextResult} translation={translationResult} analysis={analysisResult} keywords={keywordsResult} />
-                        : <ExportButton mode="document" mermaid={mermaidData} quiz={quizData} />}
-                    </Suspense>
-                    <button type="button" className="study-button" onClick={() => void saveStudyNote()} disabled={isSaving || authLoading}>
-                      <Save size={15} aria-hidden="true" />{isSaving ? "保存中" : "保存到本节课"}
-                    </button>
+                        ? "支持文本、截图上传与 Ctrl+V 粘贴"
+                        : "支持上传或粘贴连续课件截图（最多 5 张，总计 4 MB）"}
+                    </p>
                   </div>
-                )}
-              </header>
-
-              <div className="min-w-0 flex-1 space-y-3 p-4 sm:p-5">
-                {saveNotice && <p role="status" className="rounded-lg bg-study-soft px-3 py-2 text-xs leading-5 text-primary">{saveNotice}</p>}
-                {mode === "snippet" ? (
-                  <>
-                    <div className="study-segment" role="group" aria-label="结果类型">
-                      {resultTabs.map((tab) => <button key={tab.id} type="button"
-                        aria-pressed={resultView === tab.id} onClick={() => setResultView(tab.id)}>{tab.label}</button>)}
-                    </div>
-                    {resultView === "translation" && (
-                      translationResult ? (
-                        <div className="min-w-0 space-y-4">
-                          <div className="rounded-xl border border-card-border bg-white p-4">
-                            <p className="mb-2 text-xs font-semibold text-primary">中文译文</p>
-                            <Suspense fallback={<p className="text-sm text-text-muted">正在加载译文…</p>}>
-                              <TextbookTranslationRenderer layout={translationLayoutResult} fallbackContent={translationResult} />
-                            </Suspense>
-                          </div>
-                          {originalTextResult && <details open className="rounded-xl border border-card-border bg-background/50 p-3">
-                            <summary className="cursor-pointer text-sm font-semibold text-primary">
-                              {sourceLanguage === "en" ? "英语原文" : sourceLanguage === "fr" ? "法语原文" : "课件原文"}
-                            </summary>
-                            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-text-muted">{originalTextResult}</p>
-                          </details>}
-                        </div>
-                      ) : <ResultNotice busy={loadingTask === "quick"} title={loadingTask === "quick" ? "正在生成译文" : "等待外文内容"}
-                        description={loadingTask === "quick" ? "已用时 " + loadingElapsed + " 秒" : "输入原文或截图后，点击「开始速译」。"} />
-                    )}
-                    {resultView === "analysis" && (
-                      analysisResult ? (
-                        <Suspense fallback={<p className="text-sm text-text-muted">正在加载讲解…</p>}>
-                          <MarkdownRenderer content={analysisResult} compact />
-                        </Suspense>
-                      ) : <ResultNotice busy={loadingTask === "study"} title={loadingTask === "study" ? "正在整理讲解" : "查看原理与公式"}
-                        description={loadingTask === "study" ? "已用时 " + loadingElapsed + " 秒" : "速译后点击「讲原理和术语」。"} />
-                    )}
-                    {resultView === "terms" && (
-                      keywordItemsResult.length || keywordsResult ? (
-                        <Suspense fallback={<p className="text-sm text-text-muted">正在加载术语…</p>}>
-                          <KeywordGlossary content={keywordsResult ?? undefined} items={keywordItemsResult} />
-                        </Suspense>
-                      ) : <ResultNotice busy={loadingTask === "study"} title={loadingTask === "study" ? "正在提取专业术语" : "查看本段的专业术语"}
-                        description={loadingTask === "study" ? "已用时 " + loadingElapsed + " 秒" : "生成讲解后，这里会显示术语卡片。"} />
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {isLoading && <ResultNotice busy title={loadingTask === "quiz" ? "正在生成小测" : "正在生成导图"} description={"已用时 " + loadingElapsed + " 秒"} />}
-                    {!isLoading && !hasResult && <ResultNotice title="等待课件截图" description="上传截图后，可以分别生成知识导图和三语小测。" />}
-                    {mermaidData && <Suspense fallback={<p className="text-sm text-text-muted">正在加载导图…</p>}>
-                      <DocumentMindmapPanel mermaidData={mermaidData} />
-                    </Suspense>}
-                    {!!quizData?.length && <Suspense fallback={<p className="text-sm text-text-muted">正在加载小测…</p>}>
-                      <DocumentQuizPanel sourceImages={documentFiles.map((file) => file.name)} quizData={quizData} quizLang={quizLang} onQuizLangChange={setQuizLang} />
-                    </Suspense>}
-                  </>
+                </div>
+                {inputSummary && (
+                  <span className="text-xs text-text-light bg-background px-2 py-0.5 rounded-full">
+                    {inputSummary}
+                  </span>
                 )}
               </div>
-            </section>
-          </div>
-        </section>
 
-        <section className="mt-8" aria-labelledby="other-tools-heading">
-          <h2 id="other-tools-heading" className="mb-3 text-lg font-semibold tracking-tight">其他学习工具</h2>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {studyLinks.map(({ href, title, description, Icon }) => (
-              <Link key={href} href={href} className="study-card group flex min-w-0 items-start gap-3 p-4 hover:border-primary-lighter">
-                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-study-soft text-primary"><Icon size={17} aria-hidden="true" /></span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-foreground group-hover:text-primary">{title}</span>
-                  <span className="mt-1 block text-xs leading-5 text-text-muted">{description}</span>
-                </span>
-                <ArrowRight size={15} className="mt-0.5 shrink-0 text-text-light group-hover:text-primary" aria-hidden="true" />
-              </Link>
-            ))}
+              <div className="px-6 pb-1">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-card-border/80 bg-white/75 px-4 py-3">
+                  <div>
+                    <p className="text-xs font-semibold tracking-[0.08em] text-text-muted">
+                      按需学习
+                    </p>
+                    <p className="mt-1 text-xs text-text-light">
+                      {mode === "snippet" ? "先看双语对照，再按需解释原理和术语。" : "分别生成知识导图和三语小测。"}
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-1 rounded-full border border-card-border bg-background px-1 py-1 text-[11px] shadow-sm">
+                    <button
+                      onClick={() => setDeepMode(false)}
+                      className={`px-3 py-1.5 rounded-full transition-all ${
+                        !deepMode
+                          ? "bg-primary text-white shadow-sm"
+                          : "text-text-muted hover:text-foreground"
+                      }`}
+                    >
+                      简明讲解
+                    </button>
+                    <button
+                      onClick={() => setDeepMode(true)}
+                      className={`px-3 py-1.5 rounded-full transition-all ${
+                        deepMode
+                          ? "bg-slate-900 text-white shadow-sm"
+                          : "text-text-muted hover:text-foreground"
+                      }`}
+                    >
+                      深入讲解
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`p-5 flex flex-1 flex-col gap-4 ${mode === "snippet" ? "min-h-[280px]" : ""}`}>
+                <input
+                  ref={snippetFileInputRef}
+                  type="file"
+                  accept={IMAGE_MIME_TYPES.join(",")}
+                  className="hidden"
+                  onChange={handleSnippetFileChange}
+                />
+                <input
+                  ref={documentFileInputRef}
+                  type="file"
+                  accept={IMAGE_MIME_TYPES.join(",")}
+                  multiple
+                  className="hidden"
+                  onChange={handleDocumentFileChange}
+                />
+
+                {mode === "snippet" ? (
+                  <div className="flex-1 flex flex-col">
+                    {!snippetPreviewUrl ? (
+                      <div className="flex flex-col gap-2">
+                        <textarea
+                          id="input-textarea"
+                          value={snippetText}
+                          onChange={(e) => changeSnippetText(e.target.value)}
+                          maxLength={MAX_SNIPPET_CHARS}
+                          placeholder="在此粘贴外文内容...&#10;例如：Le théorème de Gauss établit que le flux du champ électrique..."
+                          className="h-[108px] w-full resize-none rounded-2xl border border-card-border bg-white/80 px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-text-light/70 focus:border-primary-light transition-all duration-300"
+                        />
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={fillDemoSnippetText}
+                            className="rounded-full border border-primary/15 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-all hover:-translate-y-0.5 hover:bg-primary/10"
+                          >
+                            填入演示文本
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative group flex-1 min-h-[300px] rounded-[28px] border border-card-border overflow-hidden bg-gradient-to-br from-slate-50 to-white">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={snippetPreviewUrl}
+                          alt="片段预览"
+                          className="w-full h-full object-contain bg-white"
+                        />
+                        <div className="absolute top-3 right-3 flex items-center justify-center z-10">
+                          <button
+                            onClick={handleRemoveSnippetImage}
+                            className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm text-red-500 flex items-center justify-center hover:bg-white shadow-md border border-red-500/10 transition-transform hover:scale-105"
+                          >
+                            <CloseIcon />
+                          </button>
+                        </div>
+                        <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-black/60 text-white text-[10px] flex items-center gap-1.5 backdrop-blur-sm">
+                          <ImageIcon />
+                          <span className="max-w-[180px] truncate">{snippetFile?.name || "截图"}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  documentPreviewUrls.length > 0 && (
+                    <div className={`grid gap-3 ${documentPreviewUrls.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+                      {documentPreviewUrls.map((url, idx) => (
+                        <div key={url} id={"document-image-" + (idx + 1)} className="relative group scroll-mt-28 rounded-xl border border-card-border overflow-hidden bg-background/50">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={url}
+                            alt={`课件预览 ${idx + 1}`}
+                            className="w-full h-32 md:h-48 object-contain bg-background/20"
+                          />
+                          <div className="absolute top-2 right-2 flex items-center justify-center z-10">
+                            <button
+                              onClick={() => handleRemoveDocumentImage(idx)}
+                              className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm text-red-500 flex items-center justify-center hover:bg-white shadow-md border border-red-500/10 transition-transform hover:scale-105"
+                            >
+                              <CloseIcon />
+                            </button>
+                          </div>
+                          <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 text-white text-[10px] flex items-center gap-1 backdrop-blur-sm">
+                            <ImageIcon />
+                            <span className="max-w-[120px] truncate">{documentFiles[idx]?.name || `图 ${idx + 1}`}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  {!(mode === "snippet" && snippetFile) && !(mode === "document" && documentFiles.length >= 5) && (
+                    <button
+                      id="upload-button"
+                      onClick={mode === "snippet" ? openSnippetUpload : openDocumentUpload}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-primary-lighter/60 text-primary hover:bg-primary/5 hover:border-primary-light transition-all duration-200 text-sm font-medium"
+                    >
+                      <UploadIcon />
+                      {mode === "snippet" ? "上传课件截图" : "上传多张课件 (上限5张)"}
+                    </button>
+                  )}
+
+                  {errorMessage && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
+                      {errorMessage}
+                    </div>
+                  )}
+
+                  <div className="ml-auto flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+                    <button type="button" disabled={isLoading || (mode === "snippet" && !translationResult)}
+                      onClick={() => void handleTranslate(mode === "snippet" ? "study" : "quiz")}
+                      className="rounded-xl border border-primary/20 px-4 py-2 text-sm font-medium text-primary disabled:opacity-50">
+                      {mode === "snippet" ? "讲原理和术语" : "生成三语小测"}
+                    </button>
+                    <button
+                      id="translate-button"
+                      onClick={() => void handleTranslate(mode === "snippet" ? "quick" : "mindmap")}
+                      disabled={isLoading}
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-primary-light text-white text-sm font-semibold hover:shadow-lg hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
+                    >
+                      {isLoading ? (
+                        <>
+                          <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" />
+                          </svg>
+                          {loadingTask === "study" ? "讲解生成中" : loadingTask === "quiz" ? "小测生成中" : "处理中"} · {loadingElapsed}s
+                        </>
+                      ) : (
+                        <>
+                          <SendIcon />
+                          {mode === "snippet" ? "开始速译" : "生成知识导图"}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {mode === "snippet" && (
+              <div className="bg-card-bg rounded-3xl border border-card-border shadow-sm overflow-hidden h-full flex flex-col">
+                <div className="px-5 py-4 border-b border-card-border/60 bg-background/30 flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+                    <span className="w-6 h-6 rounded bg-amber-500/10 flex items-center justify-center text-amber-500">
+                      <BookOpen size={14} />
+                    </span>
+                    关键词速览
+                  </h3>
+                  {(keywordItemsResult.length > 0 || keywordsResult) && loadingTask !== "study" && (
+                    <span className="text-xs text-amber-600 bg-amber-500/10 px-2 py-1 rounded-md">
+                      术语已就绪
+                    </span>
+                  )}
+                </div>
+                <div className="p-5 min-h-[260px] flex-1">
+                    {loadingTask === "study" && !keywordItemsResult.length ? (
+                      <div className="h-full rounded-[28px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(255,251,235,0.72))] shadow-sm flex flex-col items-center justify-center gap-3 text-text-muted">
+                        <div className="relative w-10 h-10">
+                          <svg className="animate-spin text-amber-500/30 w-full h-full" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                        </svg>
+                        <svg className="animate-spin text-amber-500 w-full h-full absolute top-0 left-0" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="15 45" strokeLinecap="round" />
+                        </svg>
+                      </div>
+                      <p className="text-sm animate-pulse">正在提取关键词... {loadingElapsed}s</p>
+                      <span className="text-xs text-text-light">
+                        当前：{deepMode ? "深度模式" : "极速模式"} · {deepMode ? "深度模式通常 20-60 秒" : "极速模式通常 10-30 秒"}
+                      </span>
+                    </div>
+                  ) : keywordItemsResult.length > 0 || keywordsResult ? (
+                    <Suspense fallback={<div className="text-sm text-text-muted">加载关键词...</div>}>
+                      <div className="h-full rounded-[28px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(255,251,235,0.7))] shadow-sm overflow-hidden flex flex-col">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-card-border/70 px-4 py-3 bg-white/85">
+                          <div>
+                            <p className="text-xs font-semibold tracking-[0.08em] text-text-muted">
+                              术语整理
+                            </p>
+                            <p className="mt-1 text-xs text-text-light">
+                              每个关键词按法语词、中文释义和定义逐条展示。
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium text-amber-600">
+                            便于复习
+                          </span>
+                        </div>
+                        <div className="flex-1 overflow-y-auto px-4 py-4 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.08),transparent_34%),linear-gradient(180deg,#ffffff_0%,#fffbeb_100%)]">
+                          <KeywordGlossary
+                            content={keywordsResult ?? undefined}
+                            items={keywordItemsResult}
+                          />
+                        </div>
+                      </div>
+                    </Suspense>
+                  ) : (
+                    <div className="h-full rounded-[28px] border border-dashed border-card-border bg-white/70 flex flex-col items-center justify-center text-text-light text-sm">
+                      <div className="w-12 h-12 mb-3 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500">
+                        <BookOpen size={20} />
+                      </div>
+                      <p>每个关键词会按“法语词 (中文) : 定义”逐条展示。</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-        </section>
+
+          <div
+            className={`animate-fade-in-up-delay-2 gap-5 ${
+              mode === "snippet"
+                ? "grid xl:grid-rows-[minmax(430px,1fr)_minmax(320px,1fr)]"
+                : "flex flex-col"
+            }`}
+          >
+            {mode === "snippet" ? (
+              <>
+                <div className="bg-card-bg rounded-3xl border border-card-border shadow-sm overflow-hidden h-full flex flex-col">
+                  <div className="px-5 py-4 border-b border-card-border/60 bg-background/30 flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                      <span className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-primary">
+                        <TranslateIcon />
+                      </span>
+                      精准翻译
+                    </h2>
+                    {translationResult && loadingTask !== "quick" && (
+                      <div className="flex items-center gap-2">
+                        <Suspense fallback={null}>
+                          <ExportButton
+                            originalText={originalTextResult}
+                            translation={translationResult}
+                            analysis={analysisResult}
+                            keywords={keywordsResult}
+                            mermaid={mermaidData}
+                            mode={mode}
+                          />
+                        </Suspense>
+                        <span className="text-xs text-primary font-medium bg-primary/10 px-2 py-1 rounded-md">
+                          译文已就绪
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-5 min-h-[280px] flex-1">
+                    {loadingTask === "quick" && !translationResult ? (
+                      <div className="h-full flex flex-col items-center justify-center gap-4 text-text-muted">
+                        <div className="relative w-12 h-12">
+                          <svg className="animate-spin text-primary/30 w-full h-full" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                          </svg>
+                          <svg className="animate-spin text-primary w-full h-full absolute top-0 left-0" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="15 45" strokeLinecap="round" />
+                          </svg>
+                        </div>
+                        <p className="text-sm animate-pulse">正在整理精准译文与公式... {loadingElapsed}s</p>
+                        <span className="text-xs text-text-light">
+                          当前：{deepMode ? "深度模式" : "极速模式"} · {snippetFile ? "图片模式通常 30-60 秒" : "极速模式通常 10-30 秒"}
+                        </span>
+                      </div>
+                    ) : translationResult ? (
+                      <Suspense fallback={<div className="text-sm text-text-muted">加载排版引擎...</div>}>
+                        <div className="flex h-full flex-col rounded-[28px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.98))] shadow-sm overflow-hidden">
+                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-card-border/70 px-4 py-3 bg-white/85">
+                            <div>
+                              <p className="text-xs font-semibold tracking-[0.08em] text-text-muted">
+                                译文整理
+                              </p>
+                              <p className="mt-1 text-xs text-text-light">
+                                聚焦中文译文与公式呈现，方便对照左侧原图通读。
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
+                              便于通读
+                            </span>
+                          </div>
+                          <div className="flex-1 overflow-y-auto px-5 py-5 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.06),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
+                            {originalTextResult && <details open className="mb-4 rounded-xl border border-card-border bg-white p-3">
+                              <summary className="cursor-pointer text-sm font-medium text-primary">
+                                {sourceLanguage === "en" ? "英语原文" : sourceLanguage === "fr" ? "法语原文" : "课件原文"}
+                              </summary>
+                              <p className="mt-2 max-h-44 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-text-muted">{originalTextResult}</p>
+                            </details>}
+                            <TextbookTranslationRenderer
+                              layout={translationLayoutResult}
+                              fallbackContent={translationResult}
+                            />
+                          </div>
+                        </div>
+                      </Suspense>
+                    ) : snippetPreviewUrl ? (
+                      <div className="rounded-[28px] border border-dashed border-card-border bg-white/70 px-5 py-6 text-sm text-text-light flex h-full items-center justify-center text-center">
+                        开始解析后，这里会展示整理后的中文译文，方便与左侧原图对照阅读。
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-text-light text-sm">
+                        <div className="w-12 h-12 mb-3 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                          <TranslateIcon />
+                        </div>
+                        <p>上传截图后，这里会显示整理好的中文译文与公式。</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-card-bg rounded-3xl border border-card-border shadow-sm overflow-hidden h-full flex flex-col">
+                  <div className="px-5 py-4 border-b border-card-border/60 bg-background/30 flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                      <span className="w-6 h-6 rounded bg-teal-500/10 flex items-center justify-center text-teal-500">
+                        <FormulaIcon />
+                      </span>
+                      深度解析
+                    </h2>
+                    {analysisResult && loadingTask !== "study" && (
+                      <span className="text-xs text-teal-600 font-medium bg-teal-500/10 px-2 py-1 rounded-md">
+                        解析已就绪
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-5 min-h-[320px] flex-1">
+                    {loadingTask === "study" && !analysisResult ? (
+                      <div className="h-full rounded-[28px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(240,253,250,0.78))] shadow-sm flex flex-col items-center justify-center gap-4 text-text-muted">
+                        <div className="relative w-12 h-12">
+                          <svg className="animate-spin text-teal-500/30 w-full h-full" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                          </svg>
+                          <svg className="animate-spin text-teal-500 w-full h-full absolute top-0 left-0" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="15 45" strokeLinecap="round" />
+                          </svg>
+                        </div>
+                        <p className="text-sm animate-pulse">AI 正在补充原理与上下文... {loadingElapsed}s</p>
+                        <span className="text-xs text-text-light">
+                          当前：{deepMode ? "深度模式" : "极速模式"} · {deepMode ? "深度模式通常 20-60 秒" : "极速模式通常 10-30 秒"}
+                        </span>
+                      </div>
+                    ) : analysisResult ? (
+                      <Suspense fallback={<div className="text-sm text-text-muted">加载分析结果...</div>}>
+                        <div className="h-full rounded-[28px] border border-card-border bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(240,253,250,0.78))] shadow-sm overflow-hidden flex flex-col">
+                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-card-border/70 px-4 py-3 bg-white/85">
+                            <div>
+                              <p className="text-xs font-semibold tracking-[0.08em] text-text-muted">
+                                原理拆解
+                              </p>
+                              <p className="mt-1 text-xs text-text-light">
+                                帮你理解原理、公式含义和知识点之间的关系。
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-teal-500/10 px-2.5 py-1 text-[10px] font-medium text-teal-600">
+                              更易理解
+                            </span>
+                          </div>
+                          <div className="flex-1 overflow-y-auto px-5 py-5 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.08),transparent_34%),linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
+                            <MarkdownRenderer content={analysisResult} compact className="[&_p]:leading-[1.85] [&_p]:text-[15px] [&_li]:leading-[1.8] [&_li]:text-[15px]" />
+                          </div>
+                        </div>
+                      </Suspense>
+                    ) : (
+                      <div className="h-full rounded-[28px] border border-dashed border-card-border bg-white/70 flex flex-col items-center justify-center text-text-light text-sm">
+                        <div className="w-12 h-12 mb-3 rounded-full bg-teal-500/10 flex items-center justify-center text-teal-500">
+                          <FormulaIcon />
+                        </div>
+                        <p>速译后点击「讲原理和术语」，查看公式含义和知识点关系。</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="bg-card-bg rounded-3xl border border-card-border shadow-sm overflow-hidden h-full flex flex-col">
+                <div className="px-5 py-4 border-b border-card-border/60 bg-background/30 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-primary">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+                    </div>
+                    <h2 className="text-base font-semibold text-foreground">解析结果</h2>
+                  </div>
+                  {(mermaidData || (quizData && quizData.length > 0)) && (
+                    <div className="flex items-center gap-2">
+                      <Suspense fallback={null}>
+                        <ExportButton
+                          mermaid={mermaidData}
+                          quiz={quizData}
+                          mode={mode}
+                        />
+                      </Suspense>
+                      <span className="text-xs text-primary font-medium bg-primary/10 px-2 py-1 rounded-md">
+                        渲染完成
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 p-5 overflow-y-auto min-h-[400px]">
+                  {isLoading && !mermaidData && !quizData?.length ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-4 text-text-muted">
+                      <div className="relative w-12 h-12">
+                        <svg className="animate-spin text-primary/30 w-full h-full" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                        </svg>
+                        <svg className="animate-spin text-primary w-full h-full absolute top-0 left-0" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="15 45" strokeLinecap="round" />
+                        </svg>
+                      </div>
+                      <p className="text-sm animate-pulse">AI 正在深度分析中... {loadingElapsed}s</p>
+                      <span className="text-xs text-text-light">课件精读通常需要 30-90 秒</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {!mermaidData && (!quizData || quizData.length === 0) && (
+                        <div className="h-full flex flex-col items-center justify-center text-text-light py-12">
+                          <div className="w-16 h-16 mb-4 rounded-full bg-card-border flex items-center justify-center">
+                            <BookOpen size={24} />
+                          </div>
+                          <p className="text-sm">解析结果将生成知识脉络导图与随堂小测。</p>
+                        </div>
+                      )}
+
+                      {mermaidData && (
+                        <Suspense fallback={<div className="text-sm text-text-muted">加载导图渲染引擎...</div>}>
+                          <DocumentMindmapPanel mermaidData={mermaidData} />
+                        </Suspense>
+                      )}
+
+                      {quizData && quizData.length > 0 && (
+                        <Suspense fallback={<div className="text-sm text-text-muted">加载小测渲染中...</div>}>
+                          <DocumentQuizPanel
+                            sourceImages={documentFiles.map((file) => file.name)}
+                            quizData={quizData}
+                            quizLang={quizLang}
+                            onQuizLangChange={setQuizLang}
+                          />
+                        </Suspense>
+                      )}
+
+                      {mermaidData && (!quizData || quizData.length === 0) && (
+                        <div className="rounded-2xl border border-dashed border-rose-200 bg-rose-50/70 px-4 py-4 text-sm text-rose-600">
+                          本次已成功生成知识脉络导图，但随堂小测暂未生成。你可以重新点击“开始精读解析”再试一次。
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
 
-      {!chatOpen && (
-        <button type="button" id="ai-chat-button" className="study-button study-button-primary study-pill fixed bottom-5 right-4 z-50 shadow-lg sm:right-6"
-          onClick={() => setChatOpen(true)}>
-          <MessageCircle size={17} aria-hidden="true" />AI 助教
-        </button>
-      )}
+      {/* ===== Bottom AI Chat Button ===== */}
+      <div className="fixed bottom-6 right-6 z-50 animate-fade-in-up-delay-3">
+        {/* Pulse ring */}
+        <div className="absolute inset-0 rounded-full bg-primary/30 animate-pulse-ring" />
 
+        {/* Chat FAB */}
+        <button
+          id="ai-chat-button"
+          onClick={() => setChatOpen(!chatOpen)}
+          className="relative w-14 h-14 rounded-full bg-gradient-to-br from-primary to-primary-light text-white shadow-xl shadow-primary/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-all duration-300 animate-float"
+        >
+          {chatOpen ? <CloseIcon /> : <ChatIcon />}
+        </button>
+      </div>
+
+      {/* ===== Chat Panel ===== */}
       {chatOpen && (
-        <section aria-label="AI 助教" className="study-card fixed inset-x-3 bottom-4 z-50 overflow-hidden shadow-2xl sm:left-auto sm:right-6 sm:bottom-6 sm:w-[26rem]">
-          <header className="flex items-center gap-2.5 bg-primary-dark px-4 py-3 text-white">
-            <MessageCircle size={17} className="shrink-0" aria-hidden="true" />
-            <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-semibold">AI 助教</h2>
-              <p className="text-xs text-white/75">{translationResult ? "可追问当前课件" : "解答术语和公式问题"}</p>
+        <div className="fixed bottom-24 right-6 z-50 w-[400px] bg-card-bg rounded-2xl border border-card-border shadow-2xl shadow-primary/10 overflow-hidden animate-fade-in-up">
+          {/* Chat Header */}
+          <div className="px-5 py-3.5 bg-gradient-to-r from-primary-dark to-primary text-white flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+              <SparkleIcon />
             </div>
-            {chatMessages.length > 0 && <button type="button" className="px-2 text-xs text-white/80 hover:text-white" onClick={() => setChatMessages([])}>清空</button>}
-            <button type="button" className="grid size-8 shrink-0 place-items-center rounded-lg hover:bg-white/15" aria-label="关闭助教" onClick={() => setChatOpen(false)}>
-              <X size={17} />
-            </button>
-          </header>
-          <div ref={chatBodyRef} className="max-h-[min(48dvh,22rem)] min-h-32 space-y-3 overflow-y-auto bg-background/70 p-4">
-            <p className="rounded-xl border border-card-border bg-white p-3 text-sm leading-6 text-text-muted">
-              {translationResult ? "我可以根据这次译文继续讲解。你想先了解哪个知识点？" : "你可以提问法语或英语术语，也可以让我解释课件里的公式。"}
-            </p>
-            {chatMessages.map((message, index) => (
-              <div key={index} className={message.role === "user"
-                ? "ml-auto w-fit max-w-full whitespace-pre-wrap break-words rounded-xl bg-study-soft px-3 py-2 text-sm leading-6 text-primary-dark"
-                : "max-w-full overflow-x-auto rounded-xl border border-card-border bg-white px-3 py-2 text-sm text-foreground"}>
-                {message.role === "assistant"
-                  ? <Suspense fallback={<span>正在加载…</span>}><MarkdownRenderer content={message.content} /></Suspense>
-                  : message.content}
+            <div>
+              <p className="text-sm font-semibold">AI 助教</p>
+              <p className="text-[10px] text-white/70">
+                {translationResult ? "已加载翻译上下文 · 可继续追问" : "随时为你解答学术疑问"}
+              </p>
+            </div>
+            <div className="ml-auto flex items-center gap-3">
+              {chatMessages.length > 0 && (
+                <button
+                  onClick={() => setChatMessages([])}
+                  className="text-[10px] text-white/60 hover:text-white/90 transition-colors"
+                  title="清空对话"
+                >
+                  清空
+                </button>
+              )}
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-[10px] text-white/70">在线</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Context Indicator */}
+          {translationResult && (
+            <div className="px-4 py-2 bg-primary/5 border-b border-card-border/50 flex items-center gap-2">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-primary shrink-0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+              <span className="text-[10px] text-text-muted truncate">已关联当前翻译结果，可直接追问相关问题</span>
+            </div>
+          )}
+
+          {/* Chat Body */}
+          <div ref={chatBodyRef} className="h-[320px] p-4 overflow-y-auto bg-background/50 space-y-3">
+            {/* Welcome message (always visible) */}
+            <div className="flex gap-2.5">
+              <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white">
+                <SparkleIcon />
+              </div>
+              <div className="bg-card-bg rounded-xl rounded-tl-sm px-3.5 py-2.5 text-sm text-foreground border border-card-border shadow-sm max-w-[290px]">
+                <p>
+                  你好！我是
+                  <strong className="text-primary">智译西电 AI 助教</strong>
+                  。🎓
+                </p>
+                <p className="mt-1.5 text-text-muted text-xs leading-relaxed">
+                  {translationResult
+                    ? "我已获取你刚才的翻译结果，你可以直接对其中的内容提问，比如「能用大白话再解释一下吗？」"
+                    : "我可以帮你解答法语/英语教材中的疑问，解释专业术语，或推导相关公式。请随时提问！"}
+                </p>
+              </div>
+            </div>
+
+            {/* Conversation Messages */}
+            {chatMessages.map((msg, idx) => (
+              <div key={idx} className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : ""}`}>
+                {msg.role === "assistant" && (
+                  <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white">
+                    <SparkleIcon />
+                  </div>
+                )}
+                <div
+                  className={`rounded-xl px-3.5 py-2.5 text-sm max-w-[400px] overflow-x-auto [&_.math-display]:overflow-x-auto [&_.math-display]:text-[13px] ${
+                    msg.role === "user"
+                      ? "bg-gradient-to-br from-primary to-primary-light text-white rounded-tr-sm"
+                      : "bg-card-bg text-foreground border border-card-border shadow-sm rounded-tl-sm"
+                  }`}
+                >
+                  {msg.role === "assistant" ? (
+                    <Suspense fallback={<span className="animate-pulse">...</span>}>
+                      <MarkdownRenderer content={msg.content} />
+                    </Suspense>
+                  ) : (
+                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">{msg.content}</pre>
+                  )}
+                </div>
+                {msg.role === "user" && (
+                  <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-primary-light to-primary flex items-center justify-center text-white text-xs font-bold">
+                    我
+                  </div>
+                )}
               </div>
             ))}
-            {isChatLoading && <p role="status" className="flex items-center gap-2 text-xs text-text-muted"><Loader2 size={14} className="animate-spin" />正在回答…</p>}
+
+            {/* Loading indicator */}
+            {isChatLoading && (
+              <div className="flex gap-2.5">
+                <div className="w-7 h-7 shrink-0 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white">
+                  <SparkleIcon />
+                </div>
+                <div className="bg-card-bg rounded-xl rounded-tl-sm px-4 py-3 border border-card-border shadow-sm">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-2 h-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2 border-t border-card-border p-3">
-            <input id="chat-input" aria-label="向助教提问" maxLength={MAX_CHAT_MESSAGE_CHARS} type="text" value={chatMessage}
-              onChange={(event) => setChatMessage(event.target.value)} onKeyDown={handleChatKeyDown} placeholder="输入你的问题"
-              disabled={isChatLoading} className="min-w-0 flex-1 rounded-lg border border-card-border bg-background px-3 py-2 text-sm" />
-            <button type="button" className="study-button study-button-primary" aria-label="发送问题" onClick={() => void handleChatSend()}
-              disabled={isChatLoading || !chatMessage.trim()}><Send size={15} /></button>
+
+          {/* Chat Input */}
+          <div className="p-3 border-t border-card-border bg-card-bg">
+            <div className="flex items-center gap-2 bg-background rounded-xl px-3 py-1 border border-card-border focus-within:border-primary-light transition-colors duration-200">
+              <input
+                id="chat-input"
+                maxLength={MAX_CHAT_MESSAGE_CHARS}
+                type="text"
+                value={chatMessage}
+                onChange={(e) => setChatMessage(e.target.value)}
+                onKeyDown={handleChatKeyDown}
+                placeholder={translationResult ? "对翻译结果有疑问？在这里追问..." : "输入你的学术问题..."}
+                disabled={isChatLoading}
+                className="flex-1 bg-transparent py-2 text-sm text-foreground placeholder:text-text-light outline-none disabled:opacity-50"
+              />
+              <button
+                onClick={handleChatSend}
+                disabled={isChatLoading || !chatMessage.trim()}
+                className="w-8 h-8 rounded-lg bg-gradient-to-r from-primary to-primary-light text-white flex items-center justify-center hover:shadow-md transition-all duration-200 shrink-0 disabled:opacity-40 disabled:hover:shadow-none"
+              >
+                <SendIcon />
+              </button>
+            </div>
           </div>
-        </section>
+        </div>
+      )}
+
+      {/* ===== Bottom Chat Banner (when chat is closed) ===== */}
+      {!chatOpen && (
+        <div className="fixed bottom-0 left-0 right-0 z-40">
+          <div className="max-w-[1440px] mx-auto px-4 lg:px-10 pb-4">
+            <button
+              id="chat-banner"
+              onClick={() => setChatOpen(true)}
+              className="w-full glass border border-card-border rounded-2xl px-6 py-3.5 flex items-center gap-3 hover:border-primary-light/50 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 group"
+            >
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white shadow-md shadow-primary/20">
+                <ChatIcon />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                  呼叫 AI 助教
+                </p>
+                <p className="text-xs text-text-muted">
+                  解答学术疑问 · 翻译辅助 · 公式推导
+                </p>
+              </div>
+              <div className="ml-auto flex items-center gap-2 text-text-light group-hover:text-primary transition-colors">
+                <span className="text-xs font-medium">开始对话</span>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </div>
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

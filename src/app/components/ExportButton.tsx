@@ -39,7 +39,7 @@ export default function ExportButton(props: ExportButtonProps) {
   return (
     <button
       onClick={handleExport}
-      className={"study-button " + className}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:shadow-md hover:shadow-emerald-500/25 hover:scale-[1.02] active:scale-[0.98] ${className}`}
       title="导出为 Markdown 笔记"
     >
       <Download size={13} />
