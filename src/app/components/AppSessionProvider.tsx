@@ -4,9 +4,11 @@ import {
   createContext,
   useContext,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type ReactNode,
+  type RefObject,
   type SetStateAction,
 } from "react";
 import type { QuizItem, QuizLang } from "./DocumentQuizPanel";
@@ -122,6 +124,7 @@ interface NotebookSessionState {
 interface AppSessionValue {
   home: HomeSessionState;
   pdf: PdfSessionState;
+  pendingPdfUpload: RefObject<{ file: File; ownerId: string } | null>;
   notebook: NotebookSessionState;
 }
 
@@ -151,6 +154,7 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
   const [homeErrorMessage, setHomeErrorMessage] = useState<string | null>(null);
 
   const [pdfDetails, setPdfDetails] = useState<PdfDetails>(emptyPdfDetails);
+  const pendingPdfUpload = useRef<{ file: File; ownerId: string } | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfPages, setPdfPages] = useState<string[]>([]);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -240,6 +244,7 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
         chatInput: pdfChatInput,
         setChatInput: setPdfChatInput,
       },
+      pendingPdfUpload,
       notebook: {
         tab: notebookTab,
         setTab: setNotebookTab,

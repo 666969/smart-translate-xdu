@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useEffectEvent, lazy, Suspense } from "react";
+import { useRouter } from "next/navigation";
 import type { KeywordItem } from "./components/KeywordGlossary";
 import { normalizeTranslationLayout } from "@/lib/translationLayout";
 import { useAppSession } from "./components/AppSessionProvider";
@@ -19,7 +20,7 @@ import { useLesson } from "@/hooks/useLesson";
 import { saveLessonRecord } from "@/lib/db";
 import { studySaveError, usesCloudStudy } from "@/lib/studyStorage";
 import { buildLearningNoteMarkdown } from "@/lib/markdownExport";
-import { IMAGE_MIME_TYPES, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, MAX_IMAGE_BYTES, MAX_IMAGE_COUNT, MAX_SNIPPET_CHARS } from "@/lib/studyLimits";
+import { IMAGE_MIME_TYPES, isPdfFile, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, MAX_IMAGE_BYTES, MAX_IMAGE_COUNT, MAX_PDF_BYTES, MAX_SNIPPET_CHARS } from "@/lib/studyLimits";
 
 /* ========== Types ========== */
 
@@ -224,7 +225,8 @@ function CloseIcon() {
 /* ========== Main Page Component ========== */
 
 export default function Home() {
-  const { home } = useAppSession();
+  const router = useRouter();
+  const { home, pendingPdfUpload } = useAppSession();
   const { ownerId, lesson, loading: authLoading } = useLesson();
   const {
     mode,
@@ -279,8 +281,9 @@ export default function Home() {
   const notes = useRef<Partial<Record<"snippet" | "document", string>>>({});
   useEffect(() => () => translationRequest.current?.abort(), []);
   const [loadingElapsed, setLoadingElapsed] = useState(0);
-  const snippetFileInputRef = useRef<HTMLInputElement>(null);
-  const documentFileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileDragDepth = useRef(0);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const chatBodyRef = useRef<HTMLDivElement>(null);
 
   // 翻译等待计时器
@@ -332,8 +335,6 @@ export default function Home() {
     }
   }
 
-  const openSnippetUpload = () => snippetFileInputRef.current?.click();
-  const openDocumentUpload = () => documentFileInputRef.current?.click();
   function changeSnippetText(value: string) {
     invalidateInput("snippet");
     setSnippetText(value);
@@ -342,8 +343,15 @@ export default function Home() {
 
   function acceptImages(files: File[], nextMode: "snippet" | "document") {
     if (!files.length) return;
-    if (files.some((file) => !file.size || !IMAGE_MIME_TYPES.includes(file.type))) {
-      setErrorMessage("请上传 PNG、JPEG、WebP 或 GIF 图片。");
+    const images = files.map((file) => {
+      if (file.type) return file;
+      const extension = file.name.match(/\.(png|jpe?g|webp|gif)$/i)?.[1].toLowerCase();
+      if (!extension) return file;
+      const type = `image/${extension === "jpg" ? "jpeg" : extension}`;
+      return new File([file], file.name, { type, lastModified: file.lastModified });
+    });
+    if (images.some((file) => !file.size || !IMAGE_MIME_TYPES.includes(file.type))) {
+      setErrorMessage("请选择 PNG、JPEG、WebP、GIF 图片或一份 PDF。");
       return;
     }
     const remaining = nextMode === "snippet" ? 1 : MAX_IMAGE_COUNT - documentFiles.length;
@@ -351,7 +359,7 @@ export default function Home() {
       setErrorMessage("最多上传 5 张课件截图。");
       return;
     }
-    const selected = files.slice(0, remaining);
+    const selected = images.slice(0, remaining);
     const existing = nextMode === "snippet" ? 0 : documentFiles.reduce((size, file) => size + file.size, 0);
     if (existing + selected.reduce((size, file) => size + file.size, 0) > MAX_IMAGE_BYTES) {
       setErrorMessage("截图总大小需在 4 MB 以内，请裁剪或压缩后再试。");
@@ -383,14 +391,62 @@ export default function Home() {
     return () => document.removeEventListener("paste", listener);
   }, []);
 
-  function handleSnippetFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    acceptImages(Array.from(event.target.files ?? []), "snippet");
+  function acceptFiles(files: File[]) {
+    const pdf = files.find(isPdfFile);
+    if (!pdf) {
+      acceptImages(files, mode);
+      return;
+    }
+    if (files.length !== 1) {
+      setErrorMessage("请单独选择一份 PDF，图片可以另行添加。");
+      return;
+    }
+    if (!pdf.size || pdf.size > MAX_PDF_BYTES) {
+      setErrorMessage("请选择 30 MB 以内的有效 PDF。");
+      return;
+    }
+    if (authLoading) {
+      setErrorMessage("正在确认登录状态，请稍后重新添加 PDF。");
+      return;
+    }
+    setErrorMessage(null);
+    pendingPdfUpload.current = { file: pdf, ownerId };
+    router.push("/pdf");
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    acceptFiles(Array.from(event.target.files ?? []));
     event.target.value = "";
   }
 
-  function handleDocumentFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    acceptImages(Array.from(event.target.files ?? []), "document");
-    event.target.value = "";
+  function preventFileNavigation(event: React.DragEvent) {
+    if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+  }
+
+  function handleFileDragEnter(event: React.DragEvent) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    fileDragDepth.current += 1;
+    setIsDraggingFiles(true);
+  }
+
+  function handleFileDragOver(event: React.DragEvent) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleFileDragLeave() {
+    fileDragDepth.current = Math.max(0, fileDragDepth.current - 1);
+    if (fileDragDepth.current === 0) setIsDraggingFiles(false);
+  }
+
+  function handleFileDrop(event: React.DragEvent) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    fileDragDepth.current = 0;
+    setIsDraggingFiles(false);
+    acceptFiles(Array.from(event.dataTransfer.files));
   }
 
   function handleRemoveSnippetImage() {
@@ -565,7 +621,7 @@ export default function Home() {
     : "flex flex-col";
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background" onDragOver={preventFileNavigation} onDrop={preventFileNavigation}>
       {/* ===== Top Navigation Bar (Shared) ===== */}
       <Header />
 
@@ -594,7 +650,19 @@ export default function Home() {
           mode === "snippet" ? "xl:grid-rows-[minmax(430px,auto)_minmax(320px,auto)]" : ""
         }`}>
           <div className={`animate-fade-in-up-delay-1 gap-5 ${panelColumnClass}`}>
-            <div className="bg-card-bg rounded-3xl border border-card-border shadow-sm card-hover overflow-hidden flex h-full flex-col">
+            <div
+              id="translation-drop-zone"
+              className="relative bg-card-bg rounded-3xl border border-card-border shadow-sm card-hover overflow-hidden flex h-full flex-col"
+              onDragEnter={handleFileDragEnter}
+              onDragOver={handleFileDragOver}
+              onDragLeave={handleFileDragLeave}
+              onDrop={handleFileDrop}
+            >
+              {isDraggingFiles && (
+                <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-20 grid place-items-center border-2 border-dashed border-primary rounded-3xl bg-blue-50/90 px-4 text-center text-sm font-semibold text-primary-dark">
+                  松开即可添加文件
+                </div>
+              )}
               <div className="flex px-4 pt-4 border-b border-card-border/60 bg-background/30">
                 <button
                   onClick={() => handleModeChange("snippet")}
@@ -633,10 +701,10 @@ export default function Home() {
                     <h2 className="text-base font-semibold text-foreground">
                       {mode === "snippet" ? "片段速译输入" : "课件截图上传"}
                     </h2>
-                    <p className="text-xs text-text-muted">
+                    <p id="translation-upload-help" className="text-xs text-text-muted">
                       {mode === "snippet"
-                        ? "支持文本、截图上传与 Ctrl+V 粘贴"
-                        : "支持上传或粘贴连续课件截图（最多 5 张，总计 4 MB）"}
+                        ? "拖入图片或 PDF，也可用 Ctrl+V 粘贴截图"
+                        : `拖入或粘贴截图（最多 ${MAX_IMAGE_COUNT} 张，共 4 MB），也可拖入 PDF`}
                     </p>
                   </div>
                 </div>
@@ -684,19 +752,12 @@ export default function Home() {
 
               <div className={`p-5 flex flex-1 flex-col gap-4 ${mode === "snippet" ? "min-h-[280px]" : ""}`}>
                 <input
-                  ref={snippetFileInputRef}
+                  ref={fileInputRef}
                   type="file"
-                  accept={IMAGE_MIME_TYPES.join(",")}
+                  accept={`${IMAGE_MIME_TYPES.join(",")},application/pdf,.pdf`}
+                  multiple={mode === "document"}
                   className="hidden"
-                  onChange={handleSnippetFileChange}
-                />
-                <input
-                  ref={documentFileInputRef}
-                  type="file"
-                  accept={IMAGE_MIME_TYPES.join(",")}
-                  multiple
-                  className="hidden"
-                  onChange={handleDocumentFileChange}
+                  onChange={handleFileChange}
                 />
 
                 {mode === "snippet" ? (
@@ -774,19 +835,19 @@ export default function Home() {
                 )}
 
                 <div className="flex flex-wrap items-center gap-3 pt-2">
-                  {!(mode === "snippet" && snippetFile) && !(mode === "document" && documentFiles.length >= 5) && (
-                    <button
-                      id="upload-button"
-                      onClick={mode === "snippet" ? openSnippetUpload : openDocumentUpload}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-primary-lighter/60 text-primary hover:bg-primary/5 hover:border-primary-light transition-all duration-200 text-sm font-medium"
-                    >
-                      <UploadIcon />
-                      {mode === "snippet" ? "上传课件截图" : "上传多张课件 (上限5张)"}
-                    </button>
-                  )}
+                  <button
+                    id="upload-button"
+                    type="button"
+                    aria-describedby="translation-upload-help"
+                    title="PDF 会在文献精读中打开"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-primary-lighter/60 text-primary hover:bg-primary/5 hover:border-primary-light transition-all duration-200 text-sm font-medium"
+                  >
+                    <UploadIcon />拖放或选择文件
+                  </button>
 
                   {errorMessage && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+                    <div role="alert" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
                       {errorMessage}
                     </div>

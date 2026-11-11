@@ -13,3 +13,7 @@ export const MAX_SNIPPET_CHARS = 12_000;
 export const MAX_CHAT_MESSAGE_CHARS = 8_000;
 export const MAX_CHAT_MESSAGES = 14;
 export const IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+export function isPdfFile(file: File) {
+  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+}

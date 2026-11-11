@@ -8,7 +8,7 @@ import { emptyPdfDetails, useAppSession } from "../components/AppSessionProvider
 import { getLessonRecord, saveLessonRecord, type LessonRecord } from "@/lib/db";
 import { findPdfPageRequest, pdfPageTitle, resolvePdfPages, type PdfCoverage, type PdfSource } from "@/lib/pdfNavigation";
 import { buildPdfStudyNoteMarkdown, downloadMarkdownFile } from "@/lib/markdownExport";
-import { MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, MAX_PDF_BYTES, MAX_SCAN_PAGES, MAX_SCAN_REQUEST_BYTES } from "@/lib/studyLimits";
+import { isPdfFile, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, MAX_PDF_BYTES, MAX_SCAN_PAGES, MAX_SCAN_REQUEST_BYTES } from "@/lib/studyLimits";
 import { useLesson } from "@/hooks/useLesson";
 import { studySaveError, usesCloudStudy } from "@/lib/studyStorage";
 
@@ -59,7 +59,7 @@ function PdfPreview({ file, url, page }: { file: File; url: string; page: number
 const button = "inline-flex items-center justify-center gap-1.5 rounded-xl border border-card-border bg-white px-3 py-2 text-xs font-medium text-text-muted hover:text-primary disabled:opacity-50";
 
 export default function PdfPage() {
-  const { pdf } = useAppSession();
+  const { pdf, pendingPdfUpload } = useAppSession();
   const { ownerId, lesson, loading: authLoading } = useLesson();
   const {
     details, setDetails, pdfFile, setPdfFile, pdfPages, setPdfPages, pdfUrl, setPdfUrl,
@@ -141,8 +141,7 @@ export default function PdfPage() {
   };
 
   const loadPdf = async (file: File, saved?: LessonRecord) => {
-    if (file.size === 0 || file.size > MAX_PDF_BYTES ||
-        (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf")) {
+    if (file.size === 0 || file.size > MAX_PDF_BYTES || !isPdfFile(file)) {
       setFeedback("请选择 30 MB 以内的有效 PDF。");
       return;
     }
@@ -198,6 +197,8 @@ export default function PdfPage() {
   };
 
   const restore = useEffectEvent(async (signal: AbortSignal) => {
+    const upload = pendingPdfUpload.current;
+    pendingPdfUpload.current = null;
     if ((details.ownerId && details.ownerId !== ownerId) ||
         (pendingPdfRecord && pendingPdfRecord.ownerId !== ownerId)) resetDocument();
     const recordId = new URLSearchParams(window.location.search).get("lessonPdf");
@@ -217,6 +218,9 @@ export default function PdfPage() {
       } catch {
         if (!signal.aborted) setFeedback("暂时无法打开课程记录。");
       }
+    } else if (upload) {
+      if (upload.ownerId === ownerId) await loadPdf(upload.file);
+      else setFeedback("登录状态已改变，请重新选择 PDF。");
     } else if (pdfFile && pdfExtractStatus === "idle" && details.ownerId === ownerId) {
       await loadPdf(pdfFile);
     } else {
