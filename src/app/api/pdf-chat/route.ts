@@ -5,6 +5,7 @@ import { findPdfPageRequest, pdfPageTitle, resolvePdfPages, type PdfSource } fro
 import { buildPdfSummaryContext, selectPdfSources } from "@/lib/pdfStudy";
 import { MAX_PDF_PAGES, MAX_PDF_TEXT_CHARS, MAX_SCAN_PAGES, MAX_SCAN_REQUEST_BYTES } from "@/lib/studyLimits";
 import { consumeStudyBudget, readStudyJson, readStudyMessages, StudyApiError, studyApiErrorResponse, textProviderErrorResponse } from "@/lib/studyApi";
+import { normalizeLatexContent } from "@/lib/markdownMath";
 import { textModels } from "@/lib/textModels";
 
 const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || "180000");
@@ -23,7 +24,7 @@ const PDF_PAGE_CHAT_PROMPT = `你是"智译西电"平台的理工科 PDF 文献�
 2. 如果候选页信息不足，可以明确说明“当前候选页信息有限”，但不要编造不存在的内容或页码。
 3. 用简体中文回答，保持精炼、条理清晰，适合理工科学生理解。
 4. 对公式、定理、电路、信号处理等理工科内容做专业级讲解。
-5. 所有数学公式、变量、函数表达式都必须使用规范 LaTeX 语法包裹。行内公式用成对的 $...$，独立公式用成对的 $$...$$。绝对禁止裸写公式。
+5. 所有数学公式、变量、函数表达式都必须使用规范 LaTeX 语法包裹。行内公式用成对的 $...$，独立公式的起止 $$ 各占一行。绝对禁止裸写公式。
 6. 不允许输出不成对的 $ 或 $$；如果某个公式开始使用了 $ 或 $$，必须正确闭合。
 7. 不要在正文里自行声明页码引用，系统会在回答后统一追加参考页码。
 8. 不要重复用户问题，直接给出解答。
@@ -44,7 +45,7 @@ const PDF_SCAN_CHAT_PROMPT = `你是"智译西电"平台的扫描版 PDF 文献�
 1. 只根据提供的页图内容回答，不要假装理解整本文献。
 2. 用简体中文回答，并适合理工科学生阅读。
 3. 遇到公式、定理、电路、信号处理等内容时，做专业解释。
-4. 所有数学公式、单独的代数变量、函数表达式（例如 P_x(t)）必须使用规范 LaTeX 语法，行内用成对的 $...$，独立公式用成对的 $$...$$。坚决禁止裸写公式。
+4. 所有数学公式、单独的代数变量、函数表达式（例如 P_x(t)）必须使用规范 LaTeX 语法，行内用成对的 $...$，独立公式的起止 $$ 各占一行。坚决禁止裸写公式。
 5. 任何包含 \\int、\\frac、\\sum、\\sqrt、\\sin、\\cos、\\tan、\\alpha、\\beta、\\gamma、\\theta、\\phi、\\omega、\\mathbb 等命令的内容，绝对不能裸输出。
 6. 不允许输出不成对的 $ 或 $$；如果公式开始使用了 $ 或 $$，必须正确闭合。
 7. 如果用户的问题超出当前页或当前页码范围，请明确说明需要用户切换页码范围。
@@ -52,8 +53,6 @@ const PDF_SCAN_CHAT_PROMPT = `你是"智译西电"平台的扫描版 PDF 文献�
 9. 在输出前先自检是否存在裸露的 LaTeX 命令或不成对的数学分隔符，若有必须先修正。
 10. 特别注意列表项中的公式，禁止出现“瞬时功率：$P_x...”“定义：$$X(ω)...”这类半截公式。`;
 
-const PDF_LATEX_COMMAND_PATTERN =
-  /\\(?:frac|int|lim|sum|sqrt|sin|cos|tan|ln|log|pi|nu|forall|exists|infty|alpha|beta|gamma|theta|phi|omega|mathbb|mathrm|mathcal|operatorname|cdot|times|leq|geq|neq|to|rightarrow|left|right)\b/u;
 function usesZhipuCompatibility() {
   return (process.env.OPENAI_BASE_URL || "").includes("open.bigmodel.cn");
 }
@@ -74,236 +73,6 @@ function appendPageReferences(reply: string, pageNumbers: number[]) {
 
   return `${reply.trimEnd()}\n\n${reference}`;
 }
-
-function countUnescapedDollarSigns(text: string) {
-  let count = 0;
-
-  for (let index = 0; index < text.length; index += 1) {
-    if (text[index] === "$" && text[index - 1] !== "\\") {
-      count += 1;
-    }
-  }
-
-  return count;
-}
-
-function repairPdfFormulaBody(candidate: string) {
-  return candidate
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
-    .replace(/\$\$/g, "")
-    .replace(/^[$\s]+|[$\s]+$/g, "")
-    .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
-    .replace(/\$(?=\})/gu, "")
-    .replace(/∀/g, "\\forall ")
-    .replace(/∃/g, "\\exists ")
-    .replace(/∈/g, "\\in ")
-    .replace(/ℝ/g, "\\mathbb{R}")
-    .replace(/α\s*([0-9]+)/g, "\\alpha_$1")
-    .replace(/β\s*([0-9]+)/g, "\\beta_$1")
-    .replace(/γ\s*([0-9]+)/g, "\\gamma_$1")
-    .replace(/θ\s*([0-9]+)/g, "\\theta_$1")
-    .replace(/φ\s*([0-9]+)/g, "\\phi_$1")
-    .replace(/ω\s*([0-9]+)/g, "\\omega_$1")
-    .replace(/(^|[^\\])frac(?=\s*\{)/gu, "$1\\frac")
-    .replace(/(^|[^\\])int(?=\s*[_{])/gu, "$1\\int")
-    .replace(/(^|[^\\])sum(?=\s*[_{])/gu, "$1\\sum")
-    .replace(/(^|[^\\])sqrt(?=\s*[\[{])/gu, "$1\\sqrt")
-    .replace(/(^|[\s(,，;；:：])sin(?=\s*[\[(\\])/gu, "$1\\sin")
-    .replace(/(^|[\s(,，;；:：])cos(?=\s*[\[(\\])/gu, "$1\\cos")
-    .replace(/(^|[\s(,，;；:：])tan(?=\s*[\[(\\])/gu, "$1\\tan")
-    .replace(/(^|[\s(,，;；:：])ln(?=\s*[\[(\\])/gu, "$1\\ln")
-    .replace(/(^|[\s(,，;；:：])log(?=\s*[\[(\\])/gu, "$1\\log")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function looksLikePdfInlineFormula(candidate: string) {
-  const trimmed = repairPdfFormulaBody(candidate);
-
-  if (!trimmed || /[\u4e00-\u9fff]/u.test(trimmed)) {
-    return false;
-  }
-
-  return (
-    PDF_LATEX_COMMAND_PATTERN.test(trimmed) ||
-    /[=^_{}|]/u.test(trimmed) ||
-    /[∀∃∈ℝα-ωΑ-Ω∫∑∞≈≠≤≥±]/u.test(trimmed) ||
-    /\b[A-Za-z]\w*\([^)\n]+\)/u.test(trimmed)
-  );
-}
-
-function normalizePdfLabelPrefixedFormulaLine(line: string) {
-  const formulaWithDelimiters = line.match(/^(\s*.*[：:])\s*\$\$?([^$\n]+?)\$\$?\s*$/u);
-  if (formulaWithDelimiters) {
-    const [, prefix, candidate] = formulaWithDelimiters;
-    if (looksLikePdfInlineFormula(candidate)) {
-      return `${prefix} $${repairPdfFormulaBody(candidate)}$`;
-    }
-  }
-
-  const bareFormulaAfterLabel = line.match(/^(\s*.*[：:])\s*((?:\\[A-Za-z]+|[A-Za-z]\w*\([^)\n]+\)|[∀∃∈ℝα-ωΑ-Ω∫∑∞≈≠≤≥±]).*)$/u);
-  if (bareFormulaAfterLabel) {
-    const [, prefix, candidate] = bareFormulaAfterLabel;
-    if (looksLikePdfInlineFormula(candidate)) {
-      return `${prefix} $${repairPdfFormulaBody(candidate)}$`;
-    }
-  }
-
-  return line;
-}
-
-function looksLikePdfFormulaContinuationLine(line: string) {
-  const trimmed = line.trim().replace(/^[$\s]+|[$\s]+$/g, "");
-
-  if (!trimmed) {
-    return false;
-  }
-
-  if (/^(#{1,6}|\*|-|\d+\.)\s/u.test(trimmed)) {
-    return false;
-  }
-
-  if (/^[\u4e00-\u9fff].*[：:]/u.test(trimmed)) {
-    return false;
-  }
-
-  return (
-    looksLikePdfInlineFormula(trimmed) ||
-    /^(?:\\[A-Za-z]+|[A-Za-z]\w*\([^)\n]+\)|[=^_{}|()[\]/+\-])/u.test(trimmed)
-  );
-}
-
-function normalizePdfLabelPrefixedFormulaLines(lines: string[]) {
-  const normalizedLines: string[] = [];
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-
-    if (!line.trim()) {
-      normalizedLines.push(line);
-      continue;
-    }
-
-    const normalizedSingleLine = normalizePdfLabelPrefixedFormulaLine(line);
-    if (normalizedSingleLine !== line) {
-      normalizedLines.push(normalizedSingleLine);
-      continue;
-    }
-
-    const startMatch = line.match(/^(\s*.*[：:])\s*\$\$?\s*([^$\n]*)$/u);
-    if (!startMatch) {
-      normalizedLines.push(line);
-      continue;
-    }
-
-    const [, prefix, firstChunk] = startMatch;
-    const chunks = [firstChunk.trim()];
-    let cursor = index + 1;
-
-    while (cursor < lines.length) {
-      const nextLine = lines[cursor];
-
-      if (!nextLine.trim()) {
-        break;
-      }
-
-      if (!looksLikePdfFormulaContinuationLine(nextLine)) {
-        break;
-      }
-
-      chunks.push(nextLine.trim());
-
-      if (/\$\$?\s*$/.test(nextLine.trim())) {
-        cursor += 1;
-        break;
-      }
-
-      cursor += 1;
-    }
-
-    const candidate = chunks.join(" ").replace(/^[$\s]+|[$\s]+$/g, "");
-    if (!candidate || !looksLikePdfInlineFormula(candidate)) {
-      normalizedLines.push(line);
-      continue;
-    }
-
-    normalizedLines.push(`${prefix} $${repairPdfFormulaBody(candidate)}$`);
-    index = cursor - 1;
-  }
-
-  return normalizedLines;
-}
-
-function sanitizePdfReplyMath(text: string) {
-  const normalized = text
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
-    .replace(/\\\[([\s\S]*?)\\\]/g, "$$$$ $1 $$$$")
-    .replace(/\\\(([\s\S]*?)\\\)/g, "$$$1$$")
-    .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
-    .replace(/\$(?=\})/gu, "")
-    .replace(/([^\n]+)\$\$([^$\n]+?)\$\$/gu, (match, prefix: string, inner: string) => {
-      if (!prefix.trim() || prefix.trim().endsWith("$")) return match;
-      return `${prefix}$${inner.trim()}$`;
-    })
-    .replace(/\$([^$\n]+)\$\$/g, (_, inner: string) => `$${inner.trim()}$`)
-    .replace(/\$\$([^$\n]+)\$/g, (_, inner: string) => `$${inner.trim()}$`)
-    .replace(
-      /([：:]\s*)\$\$?([^$\n]+?)(?=(?:\n|$))/gu,
-      (_, prefix: string, formula: string) => {
-        if (!looksLikePdfInlineFormula(formula)) {
-          return `${prefix}${formula}`;
-        }
-
-        return `${prefix}$${repairPdfFormulaBody(formula)}$`;
-      }
-    )
-    .replace(
-      /([：:]\s*)((?:\\(?:int|frac|lim|sum|sqrt|sin|cos|tan|ln|log|alpha|beta|gamma|theta|phi|omega|mathbb)|[∀∃∈ℝα-ωΑ-Ω∫∑∞]).*)$/gmu,
-      (_, prefix: string, formula: string) => {
-        if (!looksLikePdfInlineFormula(formula)) {
-          return `${prefix}${formula}`;
-        }
-
-        return `${prefix}$${repairPdfFormulaBody(formula)}$`;
-      }
-    );
-
-  return normalizePdfLabelPrefixedFormulaLines(normalized.split(/\r?\n/))
-    .map((line) => {
-      if (!line.trim()) {
-        return line;
-      }
-
-      const lineWithoutTrailingDollar = line
-        .replace(/\$\$\s*$/, "")
-        .replace(/\$\s*$/, "")
-        .replace(/\{\$(?=\\?[A-Za-z])/gu, "{")
-        .replace(/\$(?=\})/gu, "");
-
-      const wrappedInline = countUnescapedDollarSigns(lineWithoutTrailingDollar) % 2 === 1
-        ? lineWithoutTrailingDollar.replace(/(?<!\\)\$([^$\n]+)$/u, (match, candidate: string) => {
-            if (!looksLikePdfInlineFormula(candidate)) {
-              return match;
-            }
-
-            return `$${repairPdfFormulaBody(candidate)}$`;
-          })
-        : lineWithoutTrailingDollar;
-
-      return wrappedInline.replace(
-        /((?:[A-Za-z]\w*\([^)\n]+\)|[A-Za-z]\w*)\s*=\s*[^$\n]*?(?:\\(?:frac|int|sum|sqrt|sin|cos|tan|ln|log|alpha|beta|gamma|theta|phi|omega|mathbb)|[α-ωΑ-Ω∫∑∞])[^$\n]*)$/gu,
-        (_, candidate: string) => {
-          if (!looksLikePdfInlineFormula(candidate)) {
-            return candidate;
-          }
-
-          return `$${repairPdfFormulaBody(candidate)}$`;
-        }
-      );
-    })
-    .join("\n");
-}
-
 
 function readPdfPages(value: unknown, legacyText: unknown): string[] {
   if (Array.isArray(value) && value.length > 0 && value.length <= MAX_PDF_PAGES &&
@@ -390,7 +159,7 @@ export async function POST(request: NextRequest) {
         temperature: 0.3,
         max_tokens: limit,
       }, requestOptions);
-      const reply = sanitizePdfReplyMath(completion.choices[0]?.message?.content || "未生成答案，请重试。");
+      const reply = normalizeLatexContent(completion.choices[0]?.message?.content || "未生成答案，请重试。");
       return documentReply(reply, sources);
     }
 
@@ -409,7 +178,7 @@ export async function POST(request: NextRequest) {
         temperature: 0.2,
         max_tokens: limit,
       }, requestOptions);
-      const summary = sanitizePdfReplyMath(completion.choices[0]?.message?.content || "");
+      const summary = normalizeLatexContent(completion.choices[0]?.message?.content || "");
       if (!summary) throw new StudyApiError("摘要暂未生成，请重试。", 502);
       return NextResponse.json({ summary, coverage });
     }
@@ -456,7 +225,7 @@ export async function POST(request: NextRequest) {
       temperature: 0.3,
       max_tokens: limit,
     }, requestOptions);
-    const reply = sanitizePdfReplyMath(completion.choices[0]?.message?.content || "未生成答案，请重试。");
+    const reply = normalizeLatexContent(completion.choices[0]?.message?.content || "未生成答案，请重试。");
     return documentReply(reply, sources);
   } catch (error) {
     const knownError = studyApiErrorResponse(error);
