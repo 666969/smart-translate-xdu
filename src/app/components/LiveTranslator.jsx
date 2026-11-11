@@ -408,18 +408,17 @@ function LiveSession({ ownerId, lesson, loading }) {
         if (!stream.getAudioTracks().length) throw new Error(inputSource === "tab"
           ? "没有检测到共享音频。请选中浏览器标签页并勾选共享音频。"
           : "没有检测到麦克风音轨，请检查系统的默认输入设备。");
-        let submitAudio = false;
         setInputLevel(0);
-        const close = await captureClassroomAudio(stream,
-          (samples) => { if (submitAudio) queueAudio(run, samples); },
+        const audio = await captureClassroomAudio(stream,
+          (samples) => queueAudio(run, samples),
           (level) => { if (!start.signal.aborted) setInputLevel(level); },
           start.signal);
         if (start.signal.aborted) {
-          await close(false);
+          await audio.close(false);
           stopTracks();
           return;
         }
-        captureRef.current = { close: (finish) => close(finish).finally(stopTracks) };
+        captureRef.current = { close: (finish) => audio.close(finish).finally(stopTracks) };
         stream.getTracks().forEach((track) => { track.onended = () => stopCapture(); });
         if (!capabilities.speech) {
           setPreparingModel(!transcriberRef.current);
@@ -446,7 +445,7 @@ function LiveSession({ ownerId, lesson, loading }) {
           run.transcriber = transcriber;
         }
         if (!run.lines.length) run.startTime = Date.now();
-        submitAudio = true;
+        audio.begin();
         setStage("listening");
       } catch (failure) {
         stopTracks();

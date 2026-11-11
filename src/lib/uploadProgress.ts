@@ -15,10 +15,15 @@ export function postWithUploadProgress(
     const abort = () => request.abort();
     const done = () => signal.removeEventListener("abort", abort);
     request.open("POST", url);
-    if (typeof body === "string") request.setRequestHeader("Content-Type", "application/json");
-    request.upload.onprogress = (event) => {
+    if (typeof body === "string") {
+      request.setRequestHeader("Content-Type", "application/json");
+      onProgress({ completed: 0, total: new Blob([body]).size });
+    }
+    const reportProgress = (event: ProgressEvent) => {
       if (event.lengthComputable) onProgress({ completed: event.loaded, total: event.total });
     };
+    request.upload.onloadstart = reportProgress;
+    request.upload.onprogress = reportProgress;
     request.upload.onload = () => onProgress(null);
     request.onload = () => {
       done();

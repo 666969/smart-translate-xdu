@@ -114,6 +114,15 @@ function documentReply(reply: string, sources: PdfSource[]) {
   });
 }
 
+function pageTargetInstructions(pages: number[], labels: (string | null)[]) {
+  if (!pages.length) return "";
+  const titles = pages.map((page) => pdfPageTitle(page, labels[page - 1])).join("、");
+  return "\n\n当前问题已由网站定位到目标页：" + titles + "。" +
+    "每个目标页的 PDF 顺序和课件印刷页码是同一页的两个编号。" +
+    "问题里的页码、上一页、下一页和这页等称呼均已换算为上述目标页。" +
+    "直接讲解这些目标页中与问题相关的内容。";
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await readStudyJson(request, MAX_SCAN_REQUEST_BYTES);
@@ -153,7 +162,7 @@ export async function POST(request: NextRequest) {
       const completion = await openai.chat.completions.create({
         model,
         messages: [
-          { role: "system", content: PDF_SCAN_CHAT_PROMPT },
+          { role: "system", content: PDF_SCAN_CHAT_PROMPT + pageTargetInstructions(pageNumbers, labels) },
           { role: "user", content: imageParts },
           ...messages,
         ],
@@ -222,7 +231,7 @@ export async function POST(request: NextRequest) {
     const completion = await openai.chat.completions.create({
       model,
       messages: [
-        { role: "system", content: PDF_PAGE_CHAT_PROMPT },
+        { role: "system", content: PDF_PAGE_CHAT_PROMPT + pageTargetInstructions(selected, labels) },
         { role: "user", content: "以下是课件候选页的原文片段。\n\n" + sourceText },
         ...messages,
       ],

@@ -1,5 +1,7 @@
 export const CLASSROOM_SAMPLE_RATE = 16_000;
 const MIN_SIGNAL = 0.003;
+const MAX_SEGMENT_SECONDS = 10;
+const PAUSE_SECONDS = 0.75;
 
 function resample(samples: Float32Array, sampleRate: number) {
   const ratio = sampleRate / CLASSROOM_SAMPLE_RATE;
@@ -70,10 +72,12 @@ export async function captureClassroomAudio(
     signal.removeEventListener("abort", abortStartup);
   }
 
-  const segment = new Float32Array(Math.round(context.sampleRate * 5));
+  const segment = new Float32Array(Math.round(context.sampleRate * MAX_SEGMENT_SECONDS));
+  const pauseSamples = Math.round(context.sampleRate * PAUSE_SECONDS);
   let length = 0;
+  let collecting = false;
   let hasSignal = false;
-  let quietPackets = 0;
+  let quietSamples = 0;
   let flush: (() => void) | undefined;
   const sendSegment = () => {
     if (hasSignal && length >= context.sampleRate * 0.2) {
@@ -81,7 +85,7 @@ export async function captureClassroomAudio(
     }
     length = 0;
     hasSignal = false;
-    quietPackets = 0;
+    quietSamples = 0;
   };
   node.port.onmessage = (event) => {
     if (event.data === "flushed") {
@@ -95,6 +99,13 @@ export async function captureClassroomAudio(
     const rms = Math.sqrt(energy / packet.length);
     const audible = rms >= MIN_SIGNAL;
     onLevel(Math.min(100, Math.round(rms * 2000)));
+    if (!collecting) return;
+    if (!hasSignal && !audible) {
+      // Keep a short lead-in so quiet consonants before a louder vowel are preserved.
+      segment.set(packet);
+      length = packet.length;
+      return;
+    }
     for (let offset = 0; offset < packet.length;) {
       const count = Math.min(packet.length - offset, segment.length - length);
       segment.set(packet.subarray(offset, offset + count), length);
@@ -103,12 +114,12 @@ export async function captureClassroomAudio(
       offset += count;
       if (length === segment.length) sendSegment();
     }
-    quietPackets = audible ? 0 : quietPackets + 1;
-    if (hasSignal && length >= context.sampleRate && quietPackets >= 2) sendSegment();
+    quietSamples = audible ? 0 : quietSamples + packet.length;
+    if (hasSignal && quietSamples >= pauseSamples) sendSegment();
   };
 
   let closed: Promise<void> | undefined;
-  return (sendRemainder: boolean) => {
+  function close(sendRemainder: boolean) {
     if (closed) return closed;
     closed = (async () => {
       if (sendRemainder) {
@@ -130,5 +141,10 @@ export async function captureClassroomAudio(
       await context.close();
     })();
     return closed;
+  }
+
+  return {
+    begin: () => { collecting = true; },
+    close,
   };
 }
