@@ -162,6 +162,16 @@ body {
   opacity: 0;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up,
+  .animate-fade-in-up-delay-1,
+  .animate-fade-in-up-delay-2,
+  .animate-fade-in-up-delay-3 {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 .animate-pulse-ring {
   animation: pulse-ring 2.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }

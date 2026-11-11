@@ -354,7 +354,7 @@ export default function PdfPage() {
     <div className="min-h-screen bg-background">
       <Header />
       <main className="mx-auto max-w-[1440px] px-4 py-6 lg:px-10">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="animate-fade-in-up mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold"><FileText className="text-violet-600" />文献精读</h1>
             <p className="mt-1 text-sm text-text-muted">翻页对照原文，用中文提问，随时回到答案所依据的课件页面。</p>
@@ -371,7 +371,7 @@ export default function PdfPage() {
 
         {feedback && <p role="status" className="mb-3 rounded-xl bg-sky-50 px-4 py-2 text-sm text-sky-900">{feedback}</p>}
         <div className="grid min-w-0 gap-5 lg:grid-cols-2">
-          <section ref={previewSection} className="min-w-0 scroll-mt-20 overflow-hidden rounded-2xl border border-card-border bg-white">
+          <section ref={previewSection} className="animate-fade-in-up-delay-1 min-w-0 scroll-mt-20 overflow-hidden rounded-2xl border border-card-border bg-white">
             <div className="flex items-center justify-between gap-3 border-b border-card-border px-4 py-3">
               <h2 className="flex min-w-0 items-center gap-2 font-semibold"><BookOpen size={17} className="shrink-0 text-violet-600" />
                 <span className="truncate" title={showFile ? pdfFile.name : undefined}>{showFile ? pdfFile.name : "PDF 预览"}</span>
@@ -437,7 +437,7 @@ export default function PdfPage() {
             }} />
           </section>
 
-          <section className="flex min-h-[27rem] min-w-0 flex-col overflow-hidden rounded-2xl border border-card-border bg-white">
+          <section className="animate-fade-in-up-delay-2 flex min-h-[27rem] min-w-0 flex-col overflow-hidden rounded-2xl border border-card-border bg-white">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-card-border px-4 py-3">
               <h2 className="font-semibold">课件助教</h2>
               <div className="flex gap-2">

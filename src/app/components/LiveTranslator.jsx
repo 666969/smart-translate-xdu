@@ -430,7 +430,7 @@ function LiveSession({ ownerId, lesson, loading }) {
     <div className="min-h-screen bg-background">
       <Header />
       <main className="mx-auto max-w-[1440px] space-y-4 px-4 py-6 lg:px-10">
-        <section className="rounded-2xl border border-card-border bg-white p-4 lg:p-5">
+        <section className="animate-fade-in-up rounded-2xl border border-card-border bg-white p-4 lg:p-5">
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Mic className="text-primary" />随堂同传</h1>
           <p className="mt-2 text-sm text-text-muted">
             {usesCloudStudy(ownerId)
@@ -481,7 +481,7 @@ function LiveSession({ ownerId, lesson, loading }) {
         </section>}
 
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <section className="min-w-0 rounded-2xl border border-card-border bg-white p-4">
+          <section className="animate-fade-in-up-delay-1 min-w-0 rounded-2xl border border-card-border bg-white p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="font-semibold">双语字幕 <span className="text-sm font-normal text-text-muted">· {subtitles.length} 条</span></h2>
               {!follow && <button className={button} onClick={returnToLatest}>回到最新字幕</button>}
@@ -519,7 +519,7 @@ function LiveSession({ ownerId, lesson, loading }) {
               ))}
             </div>
           </section>
-          <aside className="rounded-2xl border border-card-border bg-white p-4">
+          <aside className="animate-fade-in-up-delay-2 rounded-2xl border border-card-border bg-white p-4">
             <h2 className="flex items-center gap-2 font-semibold"><BookOpen size={16} className="text-primary" />课程术语</h2>
             <p className="mt-1 text-xs text-text-muted">{lesson || "匹配已有理工科词库"}</p>
             <div className="mt-3 max-h-[58vh] space-y-2 overflow-y-auto">
