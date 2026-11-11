@@ -92,6 +92,7 @@ function LiveSession({ ownerId, lesson, loading }) {
   const [pendingAudio, setPendingAudio] = useState(0);
   const [inputLevel, setInputLevel] = useState(null);
   const [preparingModel, setPreparingModel] = useState(false);
+  const [modelProgress, setModelProgress] = useState(0);
   const listRef = useRef(null);
   const runRef = useRef(null);
   const captureRef = useRef(null);
@@ -421,7 +422,11 @@ function LiveSession({ ownerId, lesson, loading }) {
         stream.getTracks().forEach((track) => { track.onended = () => stopCapture(); });
         if (!capabilities.speech) {
           setPreparingModel(!transcriberRef.current);
-          const transcriber = transcriberRef.current ??= createClassroomTranscriber();
+          if (!transcriberRef.current) {
+            setModelProgress(0);
+            transcriberRef.current = createClassroomTranscriber(setModelProgress);
+          }
+          const transcriber = transcriberRef.current;
           const cancelPreparation = () => {
             transcriber.close();
             if (transcriberRef.current === transcriber) transcriberRef.current = null;
@@ -535,7 +540,10 @@ function LiveSession({ ownerId, lesson, loading }) {
           </p>}
           {capabilities && !canMic && <p className="mt-2 text-xs text-text-muted">当前浏览器的麦克风识别不可用。</p>}
           {stage === "starting" && <p role="status" className="mt-2 text-xs text-primary">
-            {preparingModel ? "正在准备设备端语音模型。首次需下载约 100 MB，准备好后开始转写。" : "正在开启音频输入…"}
+            {preparingModel
+              ? modelProgress >= 100 ? "模型下载完成，正在启动语音识别…"
+                : "正在准备设备端语音模型。首次需下载约 100 MB" + (modelProgress > 0 ? "，已下载 " + modelProgress + "%。" : "。")
+              : "正在开启音频输入…"}
           </p>}
           {inputLevel !== null && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
             <span>输入音量</span>

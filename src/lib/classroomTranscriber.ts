@@ -3,7 +3,7 @@ interface PendingRequest {
   reject: (error: Error) => void;
 }
 
-export function createClassroomTranscriber() {
+export function createClassroomTranscriber(onProgress: (progress: number) => void) {
   const worker = new Worker("/classroom-transcriber.js", { type: "module" });
   const pending = new Map<number, PendingRequest>();
   let nextId = 0;
@@ -18,6 +18,10 @@ export function createClassroomTranscriber() {
 
   worker.onerror = () => close(new Error("当前浏览器无法启动设备端语音识别。"));
   worker.onmessage = ({ data }) => {
+    if (typeof data.progress === "number") {
+      onProgress(data.progress);
+      return;
+    }
     const request = pending.get(data.id);
     if (!request) return;
     pending.delete(data.id);
