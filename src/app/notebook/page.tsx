@@ -98,7 +98,7 @@ function FlashcardReview({
         {/* Progress bar */}
         <div className="h-1.5 bg-gray-100">
           <div
-            className="h-full bg-gradient-to-r from-primary to-accent transition-all duration-500 rounded-full"
+            className="h-full bg-primary-dark transition-all duration-500 rounded-full"
             style={{
               width: `${((currentIndex + 1) / cards.length) * 100}%`,
             }}
@@ -140,10 +140,10 @@ function FlashcardReview({
             </div>
           ) : (
             <div className="text-center animate-fade-in">
-              <p className="text-lg font-semibold text-amber-700 mb-2">
+              <p className="text-lg font-semibold text-primary-dark mb-2">
                 {current.term_zh}
               </p>
-              <div className="h-px w-20 bg-amber-200 mx-auto my-3" />
+              <div className="h-px w-20 bg-blue-100 mx-auto my-3" />
               <div className="text-base text-gray-700 leading-relaxed text-left inline-block">
                 <MarkdownRenderer content={current.definition_zh} compact className="[&_p]:m-0" />
               </div>
@@ -158,7 +158,7 @@ function FlashcardReview({
             <button
               onClick={() => handleResponse(false)}
               disabled={reviewSaving}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-red-200 text-red-600 font-medium hover:bg-red-50 transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-rose-200 text-rose-800 font-medium hover:bg-rose-50 transition-colors"
             >
               <RotateCcw size={18} />
               再看一次
@@ -166,7 +166,7 @@ function FlashcardReview({
             <button
               onClick={() => handleResponse(true)}
               disabled={reviewSaving}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-medium hover:shadow-lg transition-all"
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-primary-dark text-white font-medium hover:bg-primary transition-colors"
             >
               <Check size={18} />
               记住了
@@ -220,8 +220,8 @@ function ReQuizModal({ item, ownerId, onClose, onResolved }: {
         <div className="my-3 space-y-2">
           {options.map((option, index) => <button key={index} disabled={showResult}
             className={"flex w-full items-start gap-2 rounded-lg border p-2.5 text-left text-sm " +
-              (showResult && index === correct ? "border-green-400 bg-green-50" :
-                selected === index ? "border-primary bg-sky-50" : "border-card-border")}
+              (showResult && index === correct ? "border-emerald-200 bg-emerald-50" :
+                selected === index ? "border-primary bg-blue-50" : "border-card-border")}
             onClick={() => setSelected(index)}>
             <span>{String.fromCharCode(65 + index)}.</span>
             <MarkdownRenderer content={option} compact />
@@ -229,7 +229,7 @@ function ReQuizModal({ item, ownerId, onClose, onResolved }: {
         </div>
         {showResult ? (
           <div className="space-y-2">
-            <p className={"text-sm font-medium " + (isCorrect ? "text-green-700" : "text-rose-700")}>
+            <p className={"text-sm font-medium " + (isCorrect ? "text-emerald-800" : "text-rose-800")}>
               {isCorrect ? "答对了" : correct >= 0 ? "正确选项 " + String.fromCharCode(65 + correct) : "正确答案 " + answer}
             </p>
             {item.explanation && <MarkdownRenderer content={item.explanation} compact />}
@@ -255,40 +255,22 @@ function formatSprintPackFilename(timestamp: number) {
   return `智译西电_考前冲刺包_${year}${month}${day}${hours}${minutes}.md`;
 }
 
-function getStatusSummaryClasses(tone: NotebookDashboardStats["statusSummary"]["tone"]) {
-  if (tone === "amber") {
-    return {
-      wrapper: "border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,237,213,0.92))]",
-      icon: "bg-amber-500 text-white shadow-lg shadow-amber-500/20",
-      badge: "bg-amber-500/10 text-amber-700 border border-amber-200/80",
-    };
-  }
+const statusIconClasses = {
+  amber: "bg-amber-50 text-amber-800",
+  rose: "bg-rose-50 text-rose-800",
+  emerald: "bg-emerald-50 text-emerald-800",
+} satisfies Record<NotebookDashboardStats["statusSummary"]["tone"], string>;
 
-  if (tone === "rose") {
-    return {
-      wrapper: "border-rose-200/80 bg-[linear-gradient(135deg,rgba(255,241,242,0.98),rgba(255,228,230,0.92))]",
-      icon: "bg-rose-500 text-white shadow-lg shadow-rose-500/20",
-      badge: "bg-rose-500/10 text-rose-700 border border-rose-200/80",
-    };
-  }
-
-  return {
-    wrapper: "border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.98),rgba(220,252,231,0.92))]",
-    icon: "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20",
-    badge: "bg-emerald-500/10 text-emerald-700 border border-emerald-200/80",
-  };
-}
+const tabButtonClass = "inline-flex items-center gap-1.5 rounded-lg text-sm font-medium text-text-muted transition-colors hover:bg-slate-50 hover:text-foreground aria-pressed:bg-blue-50 aria-pressed:text-primary-dark";
 
 function DashboardMetricCard({
   icon,
   label,
   value,
-  accentClass,
 }: {
   icon: ReactNode;
   label: string;
   value: number;
-  accentClass: string;
 }) {
   return (
     <div className="rounded-2xl border border-card-border bg-white px-4 py-4 shadow-sm">
@@ -299,9 +281,7 @@ function DashboardMetricCard({
           </p>
           <p className="mt-3 text-3xl font-bold text-foreground">{value}</p>
         </div>
-        <div
-          className={`flex h-10 w-10 items-center justify-center rounded-2xl ${accentClass}`}
-        >
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-primary-dark">
           {icon}
         </div>
       </div>
@@ -434,10 +414,6 @@ export default function NotebookPage() {
       activeSprintPackData.overview.unresolvedWrongAnswers === 0 &&
       activeSprintPackData.overview.resolvedWrongAnswers === 0
   );
-  const sprintSummaryStyles = getStatusSummaryClasses(
-    dashboardStats.statusSummary.tone
-  );
-
   const handleGenerateSprintPack = useCallback(() => {
     const nextPack = buildSprintPack(vocabs, wrongAnswers);
     setSprintPackData(nextPack);
@@ -463,14 +439,14 @@ export default function NotebookPage() {
   }, [activeSprintPackData]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-slate-50">
       <Header />
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-4 lg:px-8 py-8">
         {/* Page Header */}
         <div className="mb-8 animate-fade-in-up">
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-primary-dark">
               <Star size={20} />
             </div>
             我的笔记本
@@ -508,25 +484,21 @@ export default function NotebookPage() {
               icon={<BookOpen size={18} />}
               label="生词总数"
               value={dashboardStats.totalVocabs}
-              accentClass="bg-amber-500/10 text-amber-600"
             />
             <DashboardMetricCard
               icon={<Clock3 size={18} />}
               label="待复习数"
               value={dashboardStats.dueVocabs}
-              accentClass="bg-sky-500/10 text-sky-600"
             />
             <DashboardMetricCard
               icon={<ShieldAlert size={18} />}
               label="待巩固错题"
               value={dashboardStats.unresolvedWrongAnswers}
-              accentClass="bg-rose-500/10 text-rose-600"
             />
             <DashboardMetricCard
               icon={<ShieldCheck size={18} />}
               label="已掌握错题"
               value={dashboardStats.resolvedWrongAnswers}
-              accentClass="bg-emerald-500/10 text-emerald-600"
             />
           </div>
 
@@ -541,7 +513,7 @@ export default function NotebookPage() {
                     最近一周的新增学习节奏
                   </h2>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-600">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-primary-dark">
                   <BarChart3 size={18} />
                 </div>
               </div>
@@ -564,7 +536,7 @@ export default function NotebookPage() {
                         <div
                           className={`w-full rounded-xl transition-all duration-300 ${
                             item.totalCount > 0
-                              ? "bg-gradient-to-t from-violet-500 via-fuchsia-500 to-cyan-400 shadow-[0_12px_24px_-16px_rgba(99,102,241,0.6)]"
+                              ? "bg-primary-dark/75"
                               : "bg-slate-200"
                           }`}
                           style={{ height: `${height}%` }}
@@ -573,7 +545,7 @@ export default function NotebookPage() {
                       </div>
                       <div className="text-center">
                         <p className="text-[11px] font-medium text-foreground">{item.label}</p>
-                        <p className="text-[10px] text-text-light">
+                        <p className="text-[10px] text-text-muted">
                           +{item.vocabCount}/{item.wrongCount}
                         </p>
                       </div>
@@ -583,12 +555,10 @@ export default function NotebookPage() {
               </div>
             </div>
 
-            <div
-              className={`rounded-3xl border p-5 shadow-sm ${sprintSummaryStyles.wrapper}`}
-            >
+            <div className="rounded-3xl border border-blue-100 bg-blue-50/60 p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold tracking-[0.08em] uppercase text-text-muted">
+                  <p className="text-xs font-semibold tracking-[0.08em] uppercase text-slate-600">
                     当前学习状态
                   </p>
                   <h2 className="mt-1 text-lg font-semibold text-foreground">
@@ -596,14 +566,10 @@ export default function NotebookPage() {
                   </h2>
                 </div>
                 <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-2xl ${sprintSummaryStyles.icon}`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-2xl ${statusIconClasses[dashboardStats.statusSummary.tone]}`}
                 >
                   <Sparkles size={18} />
                 </div>
-              </div>
-
-              <div className={`mt-4 inline-flex rounded-full px-3 py-1 text-xs font-medium ${sprintSummaryStyles.badge}`}>
-                比赛展示模式
               </div>
 
               <p className="mt-4 text-sm leading-7 text-slate-700">
@@ -611,13 +577,13 @@ export default function NotebookPage() {
               </p>
 
               <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-2xl bg-white/80 px-4 py-3 shadow-sm">
+                <div className="rounded-2xl border border-blue-100/70 bg-white px-4 py-3">
                   <p className="text-text-muted">待复习生词</p>
                   <p className="mt-2 text-2xl font-bold text-foreground">
                     {dashboardStats.dueVocabs}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-white/80 px-4 py-3 shadow-sm">
+                <div className="rounded-2xl border border-blue-100/70 bg-white px-4 py-3">
                   <p className="text-text-muted">待巩固错题</p>
                   <p className="mt-2 text-2xl font-bold text-foreground">
                     {dashboardStats.unresolvedWrongAnswers}
@@ -628,7 +594,7 @@ export default function NotebookPage() {
               <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                 <button
                   onClick={handleGenerateSprintPack}
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-primary-dark to-primary px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 hover:shadow-primary/30"
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary-dark px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary"
                 >
                   <FileText size={16} />
                   {isActiveSprintPackOpen ? "重新生成考前冲刺包" : "生成考前冲刺包"}
@@ -636,7 +602,7 @@ export default function NotebookPage() {
                 <button
                   onClick={handleExportSprintPack}
                   disabled={!activeSprintPackData}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/70 bg-white/80 px-5 py-3 text-sm font-medium text-foreground transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-card-border bg-white px-5 py-3 text-sm font-medium text-primary-dark transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Download size={16} />
                   导出 Markdown
@@ -648,16 +614,16 @@ export default function NotebookPage() {
 
         {isActiveSprintPackOpen && activeSprintPackData && (
           <section className="mb-6 rounded-3xl border border-card-border bg-white shadow-sm animate-fade-in-up-delay-2 overflow-hidden">
-            <div className="border-b border-card-border bg-[linear-gradient(135deg,rgba(30,58,95,0.98),rgba(37,99,235,0.94))] px-6 py-5 text-white">
+            <div className="border-b border-blue-100 bg-blue-50/60 px-6 py-5 text-foreground">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className="text-xs font-semibold tracking-[0.1em] uppercase text-white/70">
+                  <p className="text-xs font-semibold tracking-[0.1em] uppercase text-primary-dark">
                     考前冲刺包
                   </p>
                   <h2 className="mt-1 text-xl font-semibold">
                     当前账号的考前快速总览
                   </h2>
-                  <p className="mt-2 text-sm text-white/80">
+                  <p className="mt-2 text-sm text-slate-600">
                     生成时间：
                     {new Date(activeSprintPackData.generatedAt).toLocaleString("zh-CN", {
                       year: "numeric",
@@ -671,21 +637,21 @@ export default function NotebookPage() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={handleGenerateSprintPack}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-card-border bg-white px-4 py-2 text-sm font-medium text-primary-dark transition-colors hover:bg-slate-50"
                   >
                     <RotateCcw size={15} />
                     重新生成
                   </button>
                   <button
                     onClick={handleExportSprintPack}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-medium text-primary-dark transition-colors hover:bg-slate-100"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-primary-dark px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary"
                   >
                     <Download size={15} />
                     导出 Markdown
                   </button>
                   <button
                     onClick={() => setIsSprintPackOpen(false)}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/15"
+                    className="inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-white"
                   >
                     <X size={15} />
                     收起
@@ -696,9 +662,9 @@ export default function NotebookPage() {
 
             <div className="p-6 space-y-6">
               {isSprintPackTotallyEmpty && activeSprintPackData && (
-                <div className="rounded-3xl border border-dashed border-primary/20 bg-[linear-gradient(135deg,rgba(239,246,255,0.98),rgba(240,253,250,0.94))] px-5 py-5 shadow-sm">
+                <div className="rounded-3xl border border-dashed border-card-border bg-slate-50 px-5 py-5 shadow-sm">
                   <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-white shadow-lg shadow-primary/20">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-primary-dark">
                       <Sparkles size={20} />
                     </div>
                     <div className="min-w-0">
@@ -744,32 +710,28 @@ export default function NotebookPage() {
                   icon={<BookOpen size={18} />}
                   label="总生词"
                   value={activeSprintPackData.overview.totalVocabs}
-                  accentClass="bg-amber-500/10 text-amber-600"
                 />
                 <DashboardMetricCard
                   icon={<Clock3 size={18} />}
                   label="待复习"
                   value={activeSprintPackData.overview.dueVocabs}
-                  accentClass="bg-sky-500/10 text-sky-600"
                 />
                 <DashboardMetricCard
                   icon={<ShieldAlert size={18} />}
                   label="待巩固错题"
                   value={activeSprintPackData.overview.unresolvedWrongAnswers}
-                  accentClass="bg-rose-500/10 text-rose-600"
                 />
                 <DashboardMetricCard
                   icon={<ShieldCheck size={18} />}
                   label="已掌握错题"
                   value={activeSprintPackData.overview.resolvedWrongAnswers}
-                  accentClass="bg-emerald-500/10 text-emerald-600"
                 />
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-[1.05fr_0.95fr] gap-6">
                 <div className="rounded-3xl border border-card-border bg-slate-50/70 p-5">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-primary-dark">
                       <Star size={18} />
                     </div>
                     <div>
@@ -811,14 +773,14 @@ export default function NotebookPage() {
                               <p className="text-base font-semibold text-blue-900">
                                 {term.termFr}
                               </p>
-                              <p className="mt-1 text-sm font-medium text-amber-700">
+                              <p className="mt-1 text-sm font-medium text-slate-700">
                                 {term.termZh}
                               </p>
                             </div>
                             <span
                               className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${
                                 term.isDue
-                                  ? "bg-amber-500/10 text-amber-700"
+                                  ? "bg-amber-50 text-amber-800"
                                   : "bg-slate-100 text-slate-600"
                               }`}
                             >
@@ -841,7 +803,7 @@ export default function NotebookPage() {
                 <div className="space-y-6">
                   <div className="rounded-3xl border border-card-border bg-slate-50/70 p-5">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-600">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-50 text-rose-800">
                         <AlertCircle size={18} />
                       </div>
                       <div>
@@ -885,16 +847,16 @@ export default function NotebookPage() {
                               <span
                                 className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${
                                   item.resolved
-                                    ? "bg-emerald-500/10 text-emerald-700"
-                                    : "bg-rose-500/10 text-rose-700"
+                                    ? "bg-emerald-50 text-emerald-800"
+                                    : "bg-rose-50 text-rose-800"
                                 }`}
                               >
                                 {item.resolved ? "已掌握" : "待巩固"}
                               </span>
                             </div>
                             <div className="mt-3 space-y-2 text-sm">
-                              <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-red-700">
-                                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.06em] text-red-500">
+                              <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2.5 text-rose-800">
+                                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.06em]">
                                   你的错误答案
                                 </span>
                                 <MarkdownRenderer
@@ -903,8 +865,8 @@ export default function NotebookPage() {
                                   className="[&_p]:m-0 [&_p]:text-sm"
                                 />
                               </div>
-                              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5 text-emerald-700">
-                                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.06em] text-emerald-500">
+                              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2.5 text-emerald-800">
+                                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.06em]">
                                   正确答案
                                 </span>
                                 <MarkdownRenderer
@@ -920,9 +882,9 @@ export default function NotebookPage() {
                     )}
                   </div>
 
-                  <div className="rounded-3xl border border-card-border bg-[linear-gradient(135deg,rgba(239,246,255,0.96),rgba(236,253,245,0.94))] p-5 shadow-sm">
+                  <div className="rounded-3xl border border-card-border bg-slate-50/70 p-5 shadow-sm">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-white shadow-lg shadow-primary/20">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-primary-dark">
                         <Sparkles size={18} />
                       </div>
                       <div>
@@ -957,39 +919,35 @@ export default function NotebookPage() {
 
         {/* Tab Switcher */}
         <div className="flex flex-wrap items-center gap-2 mb-6 animate-fade-in-up-delay-1">
-          <div className="inline-flex bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+          <div className="inline-flex flex-wrap bg-white border border-card-border rounded-xl p-1 shadow-sm">
             <button
+              type="button"
+              aria-pressed={tab === "vocab"}
               onClick={() => setTab("vocab")}
-              className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                tab === "vocab"
-                  ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm"
-                  : "text-text-muted hover:text-foreground"
-              }`}
+              className={`${tabButtonClass} px-3 py-2.5 sm:px-5`}
             >
-              📚 生词本
+              <BookOpen size={16} aria-hidden="true" /> 生词本
               {vocabs.length > 0 && (
-                <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] bg-white/20">
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700">
                   {vocabs.length}
                 </span>
               )}
             </button>
             <button
+              type="button"
+              aria-pressed={tab === "wrong"}
               onClick={() => setTab("wrong")}
-              className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                tab === "wrong"
-                  ? "bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-sm"
-                  : "text-text-muted hover:text-foreground"
-              }`}
+              className={`${tabButtonClass} px-3 py-2.5 sm:px-5`}
             >
-              ❌ 错题本
+              <AlertCircle size={16} aria-hidden="true" /> 错题本
               {unresolvedWrong.length > 0 && (
-                <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] bg-white/20">
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700">
                   {unresolvedWrong.length}
                 </span>
               )}
             </button>
-            <button type="button" onClick={() => setTab("lessons")}
-              className={"rounded-lg px-3 py-2 text-sm font-medium " + (tab === "lessons" ? "bg-primary text-white" : "text-text-muted")}>
+            <button type="button" aria-pressed={tab === "lessons"} onClick={() => setTab("lessons")}
+              className={`${tabButtonClass} px-3 py-2`}>
               课程档案
             </button>
           </div>
@@ -997,7 +955,7 @@ export default function NotebookPage() {
           {tab === "vocab" && dueVocabs.length > 0 && (
             <button
               onClick={() => setIsReviewing(true)}
-              className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-white text-sm font-medium hover:shadow-lg hover:shadow-primary/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-dark text-white text-sm font-medium transition-colors hover:bg-primary"
             >
               <RotateCcw size={16} />
               开始复习 ({dueVocabs.length} 个待复习)
@@ -1010,7 +968,7 @@ export default function NotebookPage() {
           <div className="animate-fade-in-up-delay-2">
             {vocabs.length === 0 ? (
               <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-12 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-50 flex items-center justify-center text-amber-500">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-50 flex items-center justify-center text-primary-dark">
                   <BookOpen size={28} />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground mb-2">
@@ -1054,10 +1012,10 @@ export default function NotebookPage() {
                         </div>
                       ) : (
                         <div className="text-center animate-fade-in w-full">
-                          <p className="text-base font-semibold text-amber-700 mb-1">
+                          <p className="text-base font-semibold text-primary-dark mb-1">
                             {vocab.term_zh}
                           </p>
-                          <div className="h-px w-12 bg-amber-200 mx-auto my-2" />
+                          <div className="h-px w-12 bg-blue-100 mx-auto my-2" />
                           <div className="text-sm text-gray-600 leading-relaxed text-left inline-block">
                             <MarkdownRenderer content={vocab.definition_zh} compact className="[&_p]:m-0" />
                           </div>
@@ -1094,7 +1052,7 @@ export default function NotebookPage() {
           <div className="space-y-6 animate-fade-in-up-delay-2">
             {unresolvedWrong.length === 0 && resolvedWrong.length === 0 ? (
               <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-12 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-rose-50 flex items-center justify-center text-rose-500">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-50 flex items-center justify-center text-primary-dark">
                   <AlertCircle size={28} />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground mb-2">
@@ -1109,26 +1067,26 @@ export default function NotebookPage() {
                 {/* Unresolved */}
                 {unresolvedWrong.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-semibold text-rose-600 mb-3 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-rose-500" />
+                    <h3 className="text-sm font-semibold text-rose-800 mb-3 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-rose-600" />
                       待巩固 ({unresolvedWrong.length})
                     </h3>
                     <div className="space-y-3">
                       {unresolvedWrong.map((item) => (
                         <div
                           key={item.id}
-                          className="bg-white rounded-2xl border border-rose-100 shadow-sm p-5 hover:shadow-md transition-all"
+                          className="bg-white rounded-2xl border border-card-border shadow-sm p-5 hover:shadow-md transition-shadow"
                         >
                           <div className="text-base font-medium text-foreground mb-3">
                             <MarkdownRenderer content={item.question_zh} compact className="[&_p]:m-0" />
                           </div>
                           <div className="flex flex-col gap-2 text-sm mb-3">
-                            <div className="text-red-500 bg-red-50 p-2.5 rounded-lg border border-red-100/50">
-                              <span className="text-xs font-semibold block mb-1 opacity-80">你的答案:</span>
+                            <div className="text-rose-800 bg-rose-50 p-2.5 rounded-lg border border-rose-100">
+                              <span className="text-xs font-semibold block mb-1">你的答案:</span>
                               <MarkdownRenderer content={item.wrongOption} compact className="[&_p]:m-0 [&_p]:text-sm" />
                             </div>
-                            <div className="text-green-600 bg-green-50 p-2.5 rounded-lg border border-green-100/50">
-                              <span className="text-xs font-semibold block mb-1 opacity-80">正确答案:</span>
+                            <div className="text-emerald-800 bg-emerald-50 p-2.5 rounded-lg border border-emerald-100">
+                              <span className="text-xs font-semibold block mb-1">正确答案:</span>
                               <MarkdownRenderer content={item.answer_zh} compact className="[&_p]:m-0 [&_p]:text-sm" />
                             </div>
                           </div>
@@ -1168,7 +1126,7 @@ export default function NotebookPage() {
                 {/* Resolved */}
                 {resolvedWrong.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-semibold text-green-600 mb-3 flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-emerald-800 mb-3 flex items-center gap-2">
                       <Check size={14} />
                       已掌握 ({resolvedWrong.length})
                     </h3>
@@ -1182,8 +1140,8 @@ export default function NotebookPage() {
                             <MarkdownRenderer content={item.question_zh} compact className="[&_p]:truncate [&_p]:m-0" />
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-green-500 bg-green-50 px-2 py-0.5 rounded">
-                              ✅ 已解决
+                            <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded">
+                              已解决
                             </span>
                             <button
                               onClick={() => {
