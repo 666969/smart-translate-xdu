@@ -4,7 +4,7 @@ interface PendingRequest {
 }
 
 export function createClassroomTranscriber(onProgress: (progress: number) => void) {
-  const worker = new Worker("/classroom-transcriber.js", { type: "module" });
+  const worker = new Worker("/classroom-transcriber.js?v=parts-v1", { type: "module" });
   const pending = new Map<number, PendingRequest>();
   let nextId = 0;
   let closed = false;

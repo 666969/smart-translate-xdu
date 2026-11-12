@@ -18,6 +18,12 @@ const weights = [
   ["onnx/encoder_model_quantized.onnx", 23_200_850, "3e345e977b55620a37c0c2b2af0644e019afdfad562dcf71eb929bb7274285f9"],
   ["onnx/decoder_model_merged_quantized.onnx", 53_707_539, "a6beb6baabb66f00b6a686d828c95ffca6146d51900cbad0266cad38f64cf861"],
 ];
+const browserPartBytes = 1024 * 1024;
+const browserBinaries = [
+  ["wasm", "runtime/ort-wasm-simd-threaded.jsep.wasm", 21_596_019],
+  ["encoder", "whisper-base/" + weights[0][0], weights[0][1]],
+  ["decoder", "whisper-base/" + weights[1][0], weights[1][1]],
+];
 
 async function download(url, target, range) {
   await run("curl", [
@@ -84,16 +90,41 @@ async function prepareWeight(scratch, [file, size, sha256]) {
   await copyFile(target, join(output, "whisper-base", file));
 }
 
+async function publishBrowserParts() {
+  for (const [name, file, size] of browserBinaries) {
+    const directory = join(output, "parts", name);
+    await mkdir(directory, { recursive: true });
+    const source = await open(join(output, file), "r");
+    try {
+      for (let index = 0, offset = 0; offset < size; index += 1, offset += browserPartBytes) {
+        const target = join(directory, index + ".bin");
+        const length = Math.min(browserPartBytes, size - offset);
+        if ((await stat(target).catch(() => null))?.size === length) continue;
+        const bytes = Buffer.allocUnsafe(length);
+        const result = await source.read(bytes, 0, length, offset);
+        if (result.bytesRead !== length) throw new Error("Incomplete browser model part " + name + "/" + index);
+        await writeFile(target, bytes);
+      }
+    } finally {
+      await source.close();
+    }
+  }
+  await writeFile(join(output, "ready.json"), JSON.stringify({ model: "whisper-base", transport: "parts-v1" }));
+}
+
 async function prepareModel() {
   const paths = [
     ...runtimeFiles.map((file) => ["runtime/" + file, 1]),
     ...modelFiles.map((file) => ["whisper-base/" + file, 1]),
-    ...weights.map(([file, size]) => ["whisper-base/" + file, size]),
+    ...browserBinaries.map(([, file, size]) => [file, size]),
     ["ready.json", 1],
   ];
   const alreadyPrepared = await Promise.all(paths.map(async ([file, size]) =>
     (await stat(join(output, file)).catch(() => null))?.size >= size));
-  if (alreadyPrepared.every(Boolean)) return;
+  if (alreadyPrepared.every(Boolean)) {
+    await publishBrowserParts();
+    return;
+  }
 
   const tempRoot = resolve(tmpdir());
   const scratch = await mkdtemp(join(tempRoot, "zhiyi-classroom-model-"));
@@ -108,7 +139,7 @@ async function prepareModel() {
       console.log("Preparing classroom speech model:", weight[0]);
       await prepareWeight(scratch, weight);
     }
-    await writeFile(join(output, "ready.json"), JSON.stringify({ model: "whisper-base" }));
+    await publishBrowserParts();
   } finally {
     if (dirname(resolve(scratch)) === tempRoot) await rm(scratch, { recursive: true, force: true });
   }

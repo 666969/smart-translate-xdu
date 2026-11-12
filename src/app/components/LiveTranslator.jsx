@@ -133,13 +133,13 @@ function LiveSession({ ownerId, lesson, loading }) {
     void Promise.all([
       fetch("/api/live-transcribe", options).then((res) => res.ok ? res.json() : null).catch(() => null),
       browser.localSpeech
-        ? fetch("/classroom-model/v1/ready.json", options).then((res) => res.ok ? res.json() : null).catch(() => null)
+        ? fetch("/classroom-model/v1/ready.json?v=parts-v1", options).then((res) => res.ok ? res.json() : null).catch(() => null)
         : null,
     ]).then(([speech, deviceModel]) => {
       if (!controller.signal.aborted) setCapabilities({
         ...browser,
         speech: speech?.available === true,
-        localSpeech: deviceModel?.model === "whisper-base",
+        localSpeech: deviceModel?.model === "whisper-base" && deviceModel?.transport === "parts-v1",
       });
     });
     return () => controller.abort();
