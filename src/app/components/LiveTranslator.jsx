@@ -10,6 +10,7 @@ import { saveLessonRecord } from "@/lib/db";
 import { cloudStudyEnabled, studySaveError, usesCloudStudy } from "@/lib/studyStorage";
 import { captureClassroomAudio, classroomWav, CLASSROOM_SAMPLE_RATE, CLASSROOM_VOICE_LEVEL } from "@/lib/classroomAudio";
 import { createClassroomTranscriber } from "@/lib/classroomTranscriber";
+import { requestLiveCaption } from "@/lib/liveCaptionStream";
 import { buildLiveSessionMarkdown, downloadMarkdownFile } from "@/lib/markdownExport";
 
 const button = "inline-flex items-center justify-center gap-2 rounded-xl border border-card-border bg-white px-3 py-2 text-sm font-medium text-text-muted hover:text-primary disabled:opacity-50";
@@ -54,25 +55,9 @@ async function requestResult(url, form, signal) {
   const response = await fetch(url, { method: "POST", body: form, signal });
   const data = await response.json().catch(() => null);
   if (!response.ok || !data) {
-    throw Object.assign(new Error(data?.error || "请求失败，请稍后重试。"), { status: response.status });
+    throw new Error(data?.error || "请求失败，请稍后重试。");
   }
   return data;
-}
-
-async function requestCaption(form, signal) {
-  const translate = () => requestResult(
-    "/api/translate",
-    form,
-    AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
-  );
-  try {
-    return await translate();
-  } catch (error) {
-    const transient = error instanceof TypeError || error?.name === "TimeoutError" ||
-      [408, 500, 502, 504].includes(error?.status);
-    if (signal.aborted || !transient) throw error;
-    return translate();
-  }
 }
 
 function snapshot(run, isListening) {
@@ -81,7 +66,7 @@ function snapshot(run, isListening) {
     language: run.language,
     isListening,
     errorMessage: run.issue,
-    subtitles: run.lines,
+    subtitles: run.lines.map((line) => line.status === "success" ? line : { ...line, translation: "" }),
     insights: run.insights,
     lesson: run.lesson,
   };
@@ -95,6 +80,7 @@ export default function LiveTranslator() {
 function LiveSession({ ownerId, lesson, loading }) {
   const [inputSource, setInputSource] = useState("mic");
   const [language, setLanguage] = useState("fr-FR");
+  const [recognitionMode, setRecognitionMode] = useState("online");
   const [capabilities, setCapabilities] = useState(null);
   const [stage, setStage] = useState("idle");
   const [subtitles, setSubtitles] = useState([]);
@@ -120,6 +106,14 @@ function LiveSession({ ownerId, lesson, loading }) {
 
   const isListening = stage === "listening";
   const busy = stage !== "idle" || pendingAudio > 0;
+  const sourceCanCapture = inputSource === "mic" ? capabilities?.deviceMic : capabilities?.tab;
+  const onlineMethod = sourceCanCapture && capabilities?.speech ? "server"
+    : inputSource === "mic" && capabilities?.nativeMic ? "browser" : null;
+  const canUseDevice = Boolean(sourceCanCapture && capabilities?.localSpeech);
+  const recognitionMethod = recognitionMode === "online" ? onlineMethod : canUseDevice ? "device" : null;
+  const canShare = capabilities?.tab && (capabilities.speech || capabilities.localSpeech);
+  const canMic = capabilities?.nativeMic || (capabilities?.deviceMic && (capabilities.speech || capabilities.localSpeech));
+  const canStop = isListening || stage === "starting";
 
   useEffect(() => {
     const controller = new AbortController();
@@ -185,11 +179,11 @@ function LiveSession({ ownerId, lesson, loading }) {
     }, usesCloudStudy(run.ownerId) ? 20_000 : 400);
   }
 
-  function publish(run) {
+  function publish(run, save = true) {
     if (runRef.current !== run || run.controller.signal.aborted) return;
     setSubtitles(run.lines);
     setInsights(run.insights);
-    scheduleRecord(run);
+    if (save) scheduleRecord(run);
   }
 
   function disposeRun(run) {
@@ -219,9 +213,9 @@ function LiveSession({ ownerId, lesson, loading }) {
     return run;
   }
 
-  function updateLine(run, id, change) {
+  function updateLine(run, id, change, save) {
     run.lines = run.lines.map((line) => line.id === id ? { ...line, ...change } : line);
-    publish(run);
+    publish(run, save);
   }
 
   function translateWaiting(run) {
@@ -232,11 +226,12 @@ function LiveSession({ ownerId, lesson, loading }) {
       form.set("mode", "live");
       form.set("text", line.originalText);
       form.set("language", run.language);
-      void requestCaption(form, run.controller.signal).then((data) => {
+      void requestLiveCaption(form, run.controller.signal, (translation) => {
+        if (!run.controller.signal.aborted) updateLine(run, line.id, { translation }, false);
+      }).then((translation) => {
         if (run.controller.signal.aborted) return;
-        if (!data.translation?.trim()) throw new Error("译文为空");
         setTranslationIssue("");
-        updateLine(run, line.id, { translation: data.translation.trim(), status: "success" });
+        updateLine(run, line.id, { translation, status: "success" });
       }).catch((failure) => {
         if (run.controller.signal.aborted) return;
         const interrupted = failure instanceof TypeError || failure?.name === "TimeoutError";
@@ -360,9 +355,117 @@ function LiveSession({ ownerId, lesson, loading }) {
     }).catch(() => {});
   }
 
+  function startBrowserRecognition(start, run) {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const speech = new Recognition();
+    speech.lang = run.language;
+    speech.continuous = true;
+    speech.interimResults = true;
+    let closed = false;
+    let acceptResults = true;
+    let heardSpeech = false;
+    let heardText = false;
+    let finalCount = 0;
+    let restartTimer;
+    let replyTimer;
+    let finishStop;
+
+    function fail(message) {
+      if (closed || start.signal.aborted) return;
+      noteIssue(run, message);
+      stopCapture(false);
+    }
+
+    function listen() {
+      finalCount = 0;
+      heardSpeech = false;
+      heardText = false;
+      replyTimer = window.setTimeout(() => fail("浏览器语音服务未连接，可切换到设备端转写。"), 12_000);
+      speech.start();
+    }
+
+    captureRef.current = {
+      close: async (finish) => {
+        closed = true;
+        acceptResults = finish;
+        window.clearTimeout(restartTimer);
+        window.clearTimeout(replyTimer);
+        if (!finish) {
+          speech.abort();
+          return;
+        }
+        await new Promise((resolve) => {
+          const timeout = window.setTimeout(() => {
+            acceptResults = false;
+            try { speech.abort(); }
+            finally { resolve(); }
+          }, 1_200);
+          finishStop = () => {
+            window.clearTimeout(timeout);
+            acceptResults = false;
+            resolve();
+          };
+          try { speech.stop(); }
+          catch { finishStop(); }
+        });
+      },
+    };
+    speech.onstart = () => {
+      window.clearTimeout(replyTimer);
+      if (!closed) setStage("listening");
+    };
+    speech.onspeechstart = () => {
+      if (closed) return;
+      heardSpeech = true;
+      window.clearTimeout(replyTimer);
+      replyTimer = window.setTimeout(() => fail("浏览器已收到声音，语音服务未返回文字。可切换到设备端转写。"), 12_000);
+    };
+    speech.onresult = (event) => {
+      if (!acceptResults || run.controller.signal.aborted) return;
+      const partial = [];
+      for (let i = finalCount; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        const text = result[0]?.transcript || "";
+        if (text.trim()) {
+          heardText = true;
+          window.clearTimeout(replyTimer);
+        }
+        if (result.isFinal) {
+          finalCount = i + 1;
+          addLine(run, text);
+        } else if (!result.isFinal && !closed) {
+          partial.push(text);
+        }
+      }
+      setInterim(partial.join(" "));
+    };
+    speech.onerror = ({ error: code }) => {
+      if (code !== "no-speech") fail(code === "not-allowed" ? "请在浏览器里允许访问麦克风。"
+        : "浏览器在线转写不可用，可切换到设备端转写。");
+    };
+    speech.onend = () => {
+      window.clearTimeout(replyTimer);
+      if (closed) {
+        finishStop?.();
+        return;
+      }
+      if (start.signal.aborted || run.controller.signal.aborted) return;
+      if (heardSpeech && !heardText) {
+        fail("浏览器已收到声音，语音服务未返回文字。可切换到设备端转写。");
+        return;
+      }
+      setInterim("");
+      restartTimer = window.setTimeout(() => {
+        try { listen(); }
+        catch { fail("浏览器语音识别已停止，请重新开始。"); }
+      }, 250);
+    };
+    listen();
+  }
+
   async function startCapture() {
     setShowTabGuide(false);
-    if (busy || loading || !capabilities) return;
+    if (busy || loading || !recognitionMethod || startRef.current) return;
     setError("");
     setTranslationIssue("");
     setStage("starting");
@@ -371,48 +474,10 @@ function LiveSession({ ownerId, lesson, loading }) {
     const run = getRun();
     run.transcriber = null;
     run.noTranscript = false;
+    run.issue = "";
     try {
-      const canProcessAudio = capabilities.speech || capabilities.localSpeech;
-      if (inputSource === "mic" && capabilities.nativeMic && !(capabilities.deviceMic && canProcessAudio)) {
-        const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const speech = new Recognition();
-        speech.lang = language;
-        speech.continuous = true;
-        speech.interimResults = true;
-        let closed = false;
-        captureRef.current = {
-          close: async (finish) => {
-            closed = true;
-            if (finish) speech.stop();
-            else speech.abort();
-          },
-        };
-        speech.onstart = () => { if (!closed) setStage("listening"); };
-        speech.onresult = (event) => {
-          if (run.controller.signal.aborted) return;
-          const partial = [];
-          for (let i = event.resultIndex; i < event.results.length; i += 1) {
-            const result = event.results[i];
-            const text = result[0]?.transcript || "";
-            if (result.isFinal) addLine(run, text);
-            else if (!closed) partial.push(text);
-          }
-          setInterim(partial.join(" "));
-        };
-        speech.onerror = ({ error: code }) => {
-          if (code === "no-speech" || closed) return;
-          noteIssue(run, code === "not-allowed" ? "请在浏览器里允许访问麦克风。" : "浏览器语音识别中断，请检查网络或使用转写服务。");
-          stopCapture(false);
-        };
-        speech.onend = () => {
-          if (closed || start.signal.aborted || run.controller.signal.aborted) return;
-          try { speech.start(); }
-          catch {
-            noteIssue(run, "麦克风识别已停止，请重新开始。");
-            stopCapture(false);
-          }
-        };
-        speech.start();
+      if (recognitionMethod === "browser") {
+        startBrowserRecognition(start, run);
         return;
       }
 
@@ -437,7 +502,7 @@ function LiveSession({ ownerId, lesson, loading }) {
         }
         captureRef.current = { close: (finish) => audio.close(finish).finally(stopTracks) };
         stream.getTracks().forEach((track) => { track.onended = () => stopCapture(); });
-        if (!capabilities.speech) {
+        if (recognitionMethod === "device") {
           setPreparingModel(!transcriberRef.current);
           if (!transcriberRef.current) {
             setModelProgress(0);
@@ -512,18 +577,13 @@ function LiveSession({ ownerId, lesson, loading }) {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }
 
-  const canProcessAudio = capabilities?.speech || capabilities?.localSpeech;
-  const canShare = capabilities?.tab && canProcessAudio;
-  const canMic = capabilities?.nativeMic || (capabilities?.deviceMic && canProcessAudio);
-  const canStart = inputSource === "tab" ? canShare : canMic;
-  const canStop = isListening || stage === "starting";
-
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="mx-auto max-w-[1440px] space-y-4 px-4 py-6 lg:px-10">
         <section className="animate-fade-in-up rounded-2xl border border-card-border bg-white p-4 lg:p-5">
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Mic className="text-primary" />随堂同传</h1>
+          <p className="mt-2 text-sm text-text-muted">识别到的外语分句送入 DeepSeek，中文字幕随生成逐步显示。</p>
           <p className="mt-2 text-sm text-text-muted">
             {usesCloudStudy(ownerId)
               ? "课堂文字记录每 20 秒保存到云端，也可手动保存。"
@@ -538,8 +598,19 @@ function LiveSession({ ownerId, lesson, loading }) {
                 <option value="fr-FR">法语</option><option value="en-US">英语</option>
               </select>
             </label>
+            <label className={button}>
+              <span className="sr-only">语音识别方式</span>
+              <select aria-label="语音识别方式" disabled={busy || !capabilities} value={recognitionMode} onChange={(event) => {
+                setRecognitionMode(event.target.value);
+                setShowTabGuide(false);
+                setError("");
+              }}>
+                <option value="online">在线转写（免下载）</option>
+                <option value="device" disabled={!canUseDevice}>设备端转写（首次约 100 MB）</option>
+              </select>
+            </label>
             <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              disabled={!canStop && (loading || busy || !canStart)}
+              disabled={!canStop && (loading || busy || !recognitionMethod)}
               onClick={() => canStop ? stopCapture(isListening) : inputSource === "tab" ? setShowTabGuide(true) : void startCapture()}>
               {canStop ? <Square size={15} /> : <Mic size={15} />}
               {isListening ? "停止收音" : stage === "starting" ? "取消开启" : busy ? "正在完成转写" : "开始同传"}
@@ -556,10 +627,14 @@ function LiveSession({ ownerId, lesson, loading }) {
             当前浏览器无法共享并转写标签页音频，可以使用麦克风模式。
           </p>}
           {capabilities && !canMic && <p className="mt-2 text-xs text-text-muted">当前浏览器的麦克风识别不可用。</p>}
+          {capabilities && !recognitionMethod && canUseDevice && <p className="mt-2 text-xs text-text-muted">
+            当前输入源没有可用的在线转写，可选择设备端转写。
+          </p>}
           {stage === "starting" && <div className="mt-3 max-w-md">
             {preparingModel && modelProgress < 100
               ? <OperationProgress label="正在下载语音模型" detail="首次约 100 MB" progress={{ completed: modelProgress, total: 100 }} />
-              : <OperationProgress label={preparingModel ? "正在启动语音识别" : "正在开启音频输入"} />}
+              : <OperationProgress label={preparingModel ? "正在启动语音识别"
+                : recognitionMethod === "browser" ? "正在连接浏览器语音服务" : "正在开启音频输入"} />}
           </div>}
           {inputLevel !== null && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
             <span>输入音量</span>
@@ -607,13 +682,13 @@ function LiveSession({ ownerId, lesson, loading }) {
                       }}><Bookmark size={13} fill={line.marked ? "currentColor" : "none"} />{line.marked ? "已标记" : "这句没听懂"}</button>
                   </div>
                   <p className="break-words text-sm leading-6">{line.originalText}</p>
-                  {line.status === "success" ? <p className="mt-1 break-words text-base font-medium leading-7 text-primary-dark">{line.translation}</p>
-                    : <p className="mt-1 flex items-center gap-2 text-xs text-text-muted">
-                      {line.status === "sending" ? "正在补充译文…" : "译文待补"}
+                  {line.translation && <p className="mt-1 break-words text-base font-medium leading-7 text-primary-dark">{line.translation}</p>}
+                  {line.status !== "success" && <p className="mt-1 flex items-center gap-2 text-xs text-text-muted">
+                      {line.status === "sending" ? "DeepSeek 正在翻译…" : line.translation ? "译文未完整" : "译文待补"}
                       {line.status === "error" && <button className="text-primary underline" onClick={() => {
                         const run = runRef.current;
                         if (!run) return;
-                        updateLine(run, line.id, { status: "sending" });
+                        updateLine(run, line.id, { translation: "", status: "sending" });
                         queueTranslation(run, line);
                       }}>重试翻译</button>}
                     </p>}
