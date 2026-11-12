@@ -9,7 +9,6 @@ import { glossaryData } from "@/data/glossaryData";
 import { saveLessonRecord } from "@/lib/db";
 import { cloudStudyEnabled, studySaveError, usesCloudStudy } from "@/lib/studyStorage";
 import { captureClassroomAudio, classroomCaptureError, classroomWav, CLASSROOM_SAMPLE_RATE, CLASSROOM_VOICE_LEVEL, supportsClassroomAudioCapture } from "@/lib/classroomAudio";
-import { createClassroomTranscriber } from "@/lib/classroomTranscriber";
 import { requestLiveCaption } from "@/lib/liveCaptionStream";
 import { buildLiveSessionMarkdown, downloadMarkdownFile } from "@/lib/markdownExport";
 
@@ -80,7 +79,6 @@ export default function LiveTranslator() {
 function LiveSession({ ownerId, lesson, loading }) {
   const [inputSource, setInputSource] = useState("mic");
   const [language, setLanguage] = useState("fr-FR");
-  const [recognitionPreference, setRecognitionPreference] = useState(null);
   const [capabilities, setCapabilities] = useState(null);
   const [stage, setStage] = useState("idle");
   const [subtitles, setSubtitles] = useState([]);
@@ -95,13 +93,9 @@ function LiveSession({ ownerId, lesson, loading }) {
   const [pendingAudio, setPendingAudio] = useState(0);
   const [inputLevel, setInputLevel] = useState(null);
   const [browserAudio, setBrowserAudio] = useState(null);
-  const [browserSpeechFailed, setBrowserSpeechFailed] = useState(false);
-  const [preparingModel, setPreparingModel] = useState(false);
-  const [modelProgress, setModelProgress] = useState(0);
   const listRef = useRef(null);
   const runRef = useRef(null);
   const captureRef = useRef(null);
-  const transcriberRef = useRef(null);
   const startRef = useRef(null);
   const autoScrollRef = useRef(true);
   const terms = useMemo(() => courseTerms(lesson), [lesson]);
@@ -109,39 +103,31 @@ function LiveSession({ ownerId, lesson, loading }) {
   const isListening = stage === "listening";
   const busy = stage !== "idle" || pendingAudio > 0;
   const sourceCanCapture = inputSource === "mic" ? capabilities?.deviceMic : capabilities?.tab;
-  const onlineMethod = sourceCanCapture && capabilities?.speech ? "server"
-    : inputSource === "mic" && capabilities?.nativeMic ? "browser" : null;
-  const canUseDevice = Boolean(sourceCanCapture && capabilities?.localSpeech);
-  const recognitionMode = recognitionPreference ?? (canUseDevice && onlineMethod !== "server" ? "device" : "online");
-  const recognitionMethod = recognitionMode === "online" ? onlineMethod : canUseDevice ? "device" : null;
-  const canShare = capabilities?.tab && (capabilities.speech || capabilities.localSpeech);
-  const canMic = capabilities?.nativeMic || (capabilities?.deviceMic && (capabilities.speech || capabilities.localSpeech));
+  const browserCanRecognize = inputSource === "mic" ? capabilities?.nativeMic : capabilities?.tab && capabilities.nativeTrack;
+  const recognitionMethod = sourceCanCapture && capabilities?.speech ? "server" : browserCanRecognize ? "browser" : null;
+  const canShare = capabilities?.tab && (capabilities.speech || capabilities.nativeTrack);
+  const canMic = capabilities?.nativeMic || (capabilities?.deviceMic && capabilities.speech);
   const canStop = isListening || stage === "starting";
-  const offerDevice = inputSource === "mic" && recognitionMode === "online" && canUseDevice &&
-    (browserSpeechFailed || !onlineMethod);
 
   useEffect(() => {
     const controller = new AbortController();
     const audioCapture = supportsClassroomAudioCapture();
+    const nativeMic = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+    const userAgent = navigator.userAgent;
+    // Desktop Chromium can give the recognizer the same track used by the input meter.
+    const nativeTrack = nativeMic && !/\b(?:Android|Mobile)\b/u.test(userAgent) &&
+      Number(userAgent.match(/\bChrome\/(\d+)/u)?.[1]) >= 135;
     const browser = {
-      nativeMic: Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
+      nativeMic,
+      nativeTrack,
       deviceMic: Boolean(navigator.mediaDevices?.getUserMedia && audioCapture),
       tab: Boolean(navigator.mediaDevices?.getDisplayMedia && audioCapture),
-      localSpeech: Boolean(window.Worker && window.WebAssembly && audioCapture),
     };
     const options = { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(4_000)]) };
-    void Promise.all([
-      fetch("/api/live-transcribe", options).then((res) => res.ok ? res.json() : null).catch(() => null),
-      browser.localSpeech
-        ? fetch("/classroom-model/v1/ready.json?v=parts-v1", options).then((res) => res.ok ? res.json() : null).catch(() => null)
-        : null,
-    ]).then(([speech, deviceModel]) => {
-      if (!controller.signal.aborted) setCapabilities({
-        ...browser,
-        speech: speech?.available === true,
-        localSpeech: deviceModel?.model === "whisper-base" && deviceModel?.transport === "parts-v1",
+    void fetch("/api/live-transcribe", options).then((res) => res.ok ? res.json() : null).catch(() => null)
+      .then((speech) => {
+        if (!controller.signal.aborted) setCapabilities({ ...browser, speech: speech?.available === true });
       });
-    });
     return () => controller.abort();
   }, []);
 
@@ -291,16 +277,11 @@ function LiveSession({ ownerId, lesson, loading }) {
         setPendingAudio(run.audio.length);
         const item = run.audio.shift();
         try {
-          let text;
-          if (run.transcriber) {
-            text = await run.transcriber.transcribe(item.samples, run.language);
-          } else {
-            const form = new FormData();
-            form.set("audio", classroomWav(item.samples), "classroom.wav");
-            form.set("language", run.language);
-            const signal = AbortSignal.any([run.controller.signal, AbortSignal.timeout(17_000)]);
-            text = (await requestResult("/api/live-transcribe", form, signal)).text;
-          }
+          const form = new FormData();
+          form.set("audio", classroomWav(item.samples), "classroom.wav");
+          form.set("language", run.language);
+          const signal = AbortSignal.any([run.controller.signal, AbortSignal.timeout(17_000)]);
+          const { text } = await requestResult("/api/live-transcribe", form, signal);
           if (text?.trim()) {
             if (run.noTranscript) {
               run.noTranscript = false;
@@ -313,10 +294,6 @@ function LiveSession({ ownerId, lesson, loading }) {
           }
         } catch (failure) {
           if (run.controller.signal.aborted) break;
-          if (run.transcriber && transcriberRef.current === run.transcriber) {
-            run.transcriber.close();
-            transcriberRef.current = null;
-          }
           noteIssue(run, failure instanceof Error ? failure.message : "语音转写中断。");
           run.audio = [];
           stopCapture(false);
@@ -350,7 +327,6 @@ function LiveSession({ ownerId, lesson, loading }) {
     setInterim("");
     setInputLevel(null);
     setBrowserAudio(null);
-    setPreparingModel(false);
     if (!capture) {
       setStage("idle");
       return;
@@ -362,12 +338,15 @@ function LiveSession({ ownerId, lesson, loading }) {
     }).catch(() => {});
   }
 
-  function startBrowserRecognition(start, run) {
+  function startBrowserRecognition(start, run, audio = null) {
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const speech = new Recognition();
     speech.lang = run.language;
     speech.continuous = true;
     speech.interimResults = true;
+    if ("processLocally" in speech) speech.processLocally = false;
+    const track = audio?.tracks.find((input) => input.kind === "audio");
+    const opened = audio ? (run.source === "mic" ? "麦克风已开启，" : "已接收标签页音频，") : "";
     let closed = false;
     let acceptResults = true;
     let audioOpened = false;
@@ -380,7 +359,6 @@ function LiveSession({ ownerId, lesson, loading }) {
 
     function fail(message) {
       if (closed || start.signal.aborted) return;
-      setBrowserSpeechFailed(true);
       noteIssue(run, message);
       stopCapture(false);
     }
@@ -391,8 +369,9 @@ function LiveSession({ ownerId, lesson, loading }) {
       heardSpeech = false;
       heardText = false;
       setBrowserAudio(null);
-      replyTimer = window.setTimeout(() => fail("在线转写连接超时。可以切换到设备端转写。"), 12_000);
-      speech.start();
+      replyTimer = window.setTimeout(() => fail(opened + "浏览器在线转写连接超时。"), 12_000);
+      if (track) speech.start(track);
+      else speech.start();
     }
 
     captureRef.current = {
@@ -401,24 +380,28 @@ function LiveSession({ ownerId, lesson, loading }) {
         acceptResults = finish;
         window.clearTimeout(restartTimer);
         window.clearTimeout(replyTimer);
-        if (!finish) {
-          speech.abort();
-          return;
+        try {
+          if (!finish) {
+            speech.abort();
+            return;
+          }
+          await new Promise((resolve) => {
+            const timeout = window.setTimeout(() => {
+              acceptResults = false;
+              try { speech.abort(); }
+              finally { resolve(); }
+            }, 1_200);
+            finishStop = () => {
+              window.clearTimeout(timeout);
+              acceptResults = false;
+              resolve();
+            };
+            try { speech.stop(); }
+            catch { finishStop(); }
+          });
+        } finally {
+          await audio?.close(false);
         }
-        await new Promise((resolve) => {
-          const timeout = window.setTimeout(() => {
-            acceptResults = false;
-            try { speech.abort(); }
-            finally { resolve(); }
-          }, 1_200);
-          finishStop = () => {
-            window.clearTimeout(timeout);
-            acceptResults = false;
-            resolve();
-          };
-          try { speech.stop(); }
-          catch { finishStop(); }
-        });
       },
     };
     speech.onstart = () => {
@@ -443,7 +426,7 @@ function LiveSession({ ownerId, lesson, loading }) {
       heardSpeech = true;
       setBrowserAudio("sound");
       window.clearTimeout(replyTimer);
-      replyTimer = window.setTimeout(() => fail("浏览器已收到声音，语音服务未返回文字。可切换到设备端转写。"), 12_000);
+      replyTimer = window.setTimeout(() => fail("浏览器已收到声音，在线转写暂未返回文字。"), 12_000);
     };
     speech.onresult = (event) => {
       if (!acceptResults || run.controller.signal.aborted) return;
@@ -466,10 +449,10 @@ function LiveSession({ ownerId, lesson, loading }) {
     };
     speech.onerror = ({ error: code }) => {
       if (code === "no-speech") return;
-      if (code === "not-allowed" || code === "audio-capture") {
+      if (!audio && (code === "not-allowed" || code === "audio-capture")) {
         fail("在线转写无法打开麦克风，请检查系统和浏览器的网站麦克风权限。");
       } else {
-        fail("在线语音服务暂时不可用。可以切换到设备端转写。");
+        fail(opened + "浏览器在线转写暂不可用。");
       }
     };
     speech.onend = () => {
@@ -480,11 +463,11 @@ function LiveSession({ ownerId, lesson, loading }) {
       }
       if (start.signal.aborted || run.controller.signal.aborted) return;
       if (!audioOpened && !heardText) {
-        fail("在线转写未能打开麦克风。可以切换到设备端转写。");
+        fail(audio ? opened + "浏览器在线转写未能启动。" : "在线转写未能打开麦克风。");
         return;
       }
       if (heardSpeech && !heardText) {
-        fail("浏览器已收到声音，语音服务未返回文字。可切换到设备端转写。");
+        fail("浏览器已收到声音，在线转写暂未返回文字。");
         return;
       }
       setInterim("");
@@ -496,21 +479,19 @@ function LiveSession({ ownerId, lesson, loading }) {
     listen();
   }
 
-  async function startCapture(method = recognitionMethod) {
+  async function startCapture() {
     setShowTabGuide(false);
-    if (busy || loading || !method || startRef.current) return;
+    if (busy || loading || !recognitionMethod || startRef.current) return;
     setError("");
-    setBrowserSpeechFailed(false);
     setTranslationIssue("");
     setStage("starting");
     const start = new AbortController();
     startRef.current = start;
     const run = getRun();
-    run.transcriber = null;
     run.noTranscript = false;
     run.issue = "";
     try {
-      if (method === "browser") {
+      if (recognitionMethod === "browser" && !(sourceCanCapture && capabilities.nativeTrack)) {
         startBrowserRecognition(start, run);
         return;
       }
@@ -526,36 +507,16 @@ function LiveSession({ ownerId, lesson, loading }) {
       captureRef.current = audio;
       audio.tracks.forEach((track) => { track.onended = () => stopCapture(); });
       setInputLevel((level) => level ?? 0);
-      if (method === "device") {
-        setPreparingModel(!transcriberRef.current);
-        if (!transcriberRef.current) {
-          setModelProgress(0);
-          transcriberRef.current = createClassroomTranscriber(setModelProgress);
-        }
-        const transcriber = transcriberRef.current;
-        const cancelPreparation = () => {
-          transcriber.close();
-          if (transcriberRef.current === transcriber) transcriberRef.current = null;
-        };
-        start.signal.addEventListener("abort", cancelPreparation, { once: true });
-        try {
-          await transcriber.prepare();
-          start.signal.throwIfAborted();
-        } catch (error) {
-          cancelPreparation();
-          throw error;
-        } finally {
-          start.signal.removeEventListener("abort", cancelPreparation);
-          if (!start.signal.aborted) setPreparingModel(false);
-        }
-        run.transcriber = transcriber;
+      if (recognitionMethod === "browser") {
+        startBrowserRecognition(start, run, audio);
+        return;
       }
+      start.signal.throwIfAborted();
       if (!run.lines.length) run.startTime = Date.now();
       audio.begin();
       setStage("listening");
     } catch (failure) {
       if (start.signal.aborted) return;
-      if (method === "browser") setBrowserSpeechFailed(true);
       noteIssue(run, classroomCaptureError(failure, inputSource));
       stopCapture(false);
     }
@@ -566,8 +527,6 @@ function LiveSession({ ownerId, lesson, loading }) {
     const capture = captureRef.current;
     captureRef.current = null;
     if (capture) void capture.close(false).catch(() => {});
-    transcriberRef.current?.close();
-    transcriberRef.current = null;
     const run = runRef.current;
     runRef.current = null;
     disposeRun(run);
@@ -616,18 +575,6 @@ function LiveSession({ ownerId, lesson, loading }) {
                 <option value="fr-FR">法语</option><option value="en-US">英语</option>
               </select>
             </label>
-            <label className={button}>
-              <span className="sr-only">语音识别方式</span>
-              <select aria-label="语音识别方式" disabled={busy || !capabilities} value={recognitionMode} onChange={(event) => {
-                setRecognitionPreference(event.target.value);
-                setBrowserSpeechFailed(false);
-                setShowTabGuide(false);
-                setError("");
-              }}>
-                <option value="online">在线转写（免下载）</option>
-                <option value="device" disabled={!canUseDevice}>设备端转写（首次约 100 MB）</option>
-              </select>
-            </label>
             <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               disabled={!canStop && (loading || busy || !recognitionMethod)}
               onClick={() => canStop ? stopCapture(isListening) : inputSource === "tab" ? setShowTabGuide(true) : void startCapture()}>
@@ -649,14 +596,8 @@ function LiveSession({ ownerId, lesson, loading }) {
           {capabilities && inputSource === "mic" && !capabilities.deviceMic && <p className="mt-2 text-xs text-text-muted">
             当前浏览器无法检测麦克风音量，可以用系统浏览器打开本站。
           </p>}
-          {capabilities && !recognitionMethod && canUseDevice && <p className="mt-2 text-xs text-text-muted">
-            当前输入源没有可用的在线转写，可选择设备端转写。
-          </p>}
           {stage === "starting" && <div className="mt-3 max-w-md">
-            {preparingModel && modelProgress < 100
-              ? <OperationProgress label="正在下载语音模型" detail="首次约 100 MB" progress={{ completed: modelProgress, total: 100 }} />
-              : <OperationProgress label={preparingModel ? "正在启动语音识别"
-                : recognitionMethod === "browser" ? "正在连接浏览器语音服务" : "正在开启音频输入"} />}
+            <OperationProgress label={recognitionMethod === "browser" ? "正在连接在线转写" : "正在开启音频输入"} />
           </div>}
           {browserAudio && isListening && <p role="status" className="mt-3 text-sm text-text-muted">
             {browserAudio === "sound" ? "浏览器已检测到声音。" : "浏览器已打开麦克风，正在听取声音。"}
@@ -668,11 +609,6 @@ function LiveSession({ ownerId, lesson, loading }) {
           </div>}
           {pendingAudio > 0 && <p className="mt-2 text-xs text-primary">正在转写 · {pendingAudio} 个音频片段</p>}
           {error && <p role="alert" className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900"><AlertCircle size={16} className="mt-0.5 shrink-0" />{error}</p>}
-          {offerDevice && <button type="button" className={button + " mt-3"} disabled={busy || loading}
-            onClick={() => {
-              setRecognitionPreference("device");
-              void startCapture("device");
-            }}>使用设备端转写（首次约 100 MB）</button>}
           {translationIssue && <p role="status" className="mt-2 text-sm text-rose-700">{translationIssue}</p>}
           {saveError && <p role="alert" className="mt-2 text-sm text-rose-700">{saveError}</p>}
           {saveNotice && <p role="status" className="mt-2 text-sm text-emerald-700">{saveNotice}</p>}

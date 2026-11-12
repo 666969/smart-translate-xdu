@@ -37,7 +37,7 @@ export function GET() {
 export async function POST(request: NextRequest) {
   try {
     if (!speechClient) {
-      throw new StudyApiError("标签页音频需要独立的语音转写服务。你可以先使用麦克风模式。", 503);
+      throw new StudyApiError("网站尚未配置独立的在线语音转写服务。", 503);
     }
 
     const form = await readStudyForm(request, MAX_AUDIO_BYTES + 16_384);
@@ -59,6 +59,6 @@ export async function POST(request: NextRequest) {
     if (knownError) return knownError;
     if (request.signal.aborted) return NextResponse.json({ error: "转写已取消。" }, { status: 499 });
     console.error("[Speech] Failed", error instanceof OpenAI.APIError ? error.status : (error as Error)?.name);
-    return NextResponse.json({ error: "语音转写服务暂不可用，请重试或切换麦克风模式。" }, { status: 502 });
+    return NextResponse.json({ error: "在线语音转写服务暂不可用，请稍后重试。" }, { status: 502 });
   }
 }
