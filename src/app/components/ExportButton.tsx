@@ -12,22 +12,14 @@ interface ExportButtonProps {
   analysis?: string | null;
   keywords?: string | null;
   mermaid?: string | null;
-  quiz?: Array<{
-    question_zh?: string;
-    question_fr?: string;
-    question_en?: string;
-    options_zh?: string[];
-    answer_zh?: string;
-    explanation_zh?: string;
-  }> | null;
   mode: "snippet" | "document";
   className?: string;
 }
 
 export default function ExportButton(props: ExportButtonProps) {
-  const { translation, analysis, keywords, mermaid, quiz, className = "" } = props;
+  const { translation, analysis, keywords, mermaid, className = "" } = props;
 
-  const hasContent = translation || analysis || keywords || mermaid || (quiz && quiz.length > 0);
+  const hasContent = translation || analysis || keywords || mermaid;
 
   if (!hasContent) return null;
 

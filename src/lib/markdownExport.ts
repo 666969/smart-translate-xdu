@@ -2,22 +2,12 @@
 
 import { pdfPageTitle, type PdfCoverage, type PdfSource } from "./pdfNavigation";
 
-export interface QuizItemSnapshot {
-  question_zh?: string;
-  question_fr?: string;
-  question_en?: string;
-  options_zh?: string[];
-  answer_zh?: string;
-  explanation_zh?: string;
-}
-
 export interface LearningNoteSnapshot {
   originalText?: string | null;
   translation?: string | null;
   analysis?: string | null;
   keywords?: string | null;
   mermaid?: string | null;
-  quiz?: QuizItemSnapshot[] | null;
   mode: "snippet" | "document";
 }
 
@@ -194,32 +184,6 @@ export function buildLearningNoteMarkdown(snapshot: LearningNoteSnapshot) {
     lines.push("");
   }
 
-  if (snapshot.quiz && snapshot.quiz.length > 0) {
-    pushDivider(lines);
-    lines.push("## 🧪 随堂小测");
-    lines.push("");
-    snapshot.quiz.forEach((item, index) => {
-      lines.push(
-        `### ${index + 1}. ${
-          item.question_zh || item.question_fr || item.question_en || "未命名题目"
-        }`
-      );
-      lines.push("");
-      const options = item.options_zh || [];
-      options.forEach((option, optionIndex) => {
-        lines.push(`- ${String.fromCharCode(65 + optionIndex)}. ${option}`);
-      });
-      if (item.answer_zh) {
-        lines.push("");
-        lines.push(`**正确答案：** ${item.answer_zh}`);
-      }
-      if (item.explanation_zh) {
-        lines.push("");
-        lines.push(`**解析：** ${item.explanation_zh}`);
-      }
-      lines.push("");
-    });
-  }
 
   pushDivider(lines);
   lines.push("*由 智译西电 AI 生成*");

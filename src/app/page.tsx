@@ -8,7 +8,6 @@ import { useAppSession, type HomeMode } from "./components/AppSessionProvider";
 const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
 const KeywordGlossary = lazy(() => import("./components/KeywordGlossary"));
 const DocumentMindmapPanel = lazy(() => import("./components/DocumentMindmapPanel"));
-const DocumentQuizPanel = lazy(() => import("./components/DocumentQuizPanel"));
 const ExportButton = lazy(() => import("./components/ExportButton"));
 const PdfWorkspace = lazy(() => import("./components/PdfWorkspace"));
 const TextbookTranslationRenderer = lazy(
@@ -26,7 +25,7 @@ import { IMAGE_MIME_TYPES, isPdfFile, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES,
 
 /* ========== Types ========== */
 
-type TranslateTask = "quick" | "study" | "mindmap" | "quiz";
+type TranslateTask = "quick" | "study" | "mindmap";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -244,8 +243,6 @@ export default function Home() {
     setDocumentFiles,
     documentPreviewUrls,
     setDocumentPreviewUrls,
-    quizLang,
-    setQuizLang,
     chatOpen,
     setChatOpen,
     chatMessage,
@@ -268,8 +265,6 @@ export default function Home() {
     setKeywordItemsResult,
     mermaidData,
     setMermaidData,
-    quizData,
-    setQuizData,
     errorMessage,
     setErrorMessage,
   } = home;
@@ -336,7 +331,6 @@ export default function Home() {
       setChatMessages([]);
     } else {
       setMermaidData(null);
-      setQuizData(null);
     }
   }
 
@@ -521,11 +515,8 @@ export default function Home() {
         setAnalysisResult(data.analysis);
         setKeywordsResult(data.keywords || null);
         setKeywordItemsResult(normalizeKeywordItems(data.keyword_items));
-      } else if (task === "mindmap") {
-        setMermaidData(data.mermaid);
       } else {
-        setQuizData(data.quiz);
-        if (data.incomplete) setErrorMessage("已展示通过校验的题目。需要补足时，可重新生成小测。");
+        setMermaidData(data.mermaid);
       }
     } catch (error) {
       if (!request.signal.aborted) setErrorMessage(error instanceof DOMException && error.name === "TimeoutError"
@@ -544,7 +535,7 @@ export default function Home() {
     const id = notes.current[mode] ??= crypto.randomUUID();
     const markdown = buildLearningNoteMarkdown(mode === "snippet"
       ? { mode, originalText: originalTextResult, translation: translationResult, analysis: analysisResult, keywords: keywordsResult }
-      : { mode, mermaid: mermaidData, quiz: quizData });
+      : { mode, mermaid: mermaidData });
     setIsSaving(true);
     try {
       await saveLessonRecord({
@@ -689,7 +680,7 @@ export default function Home() {
 
       {/* ===== Main Content ===== */}
       <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 lg:px-10 pb-28">
-        {(mode === "snippet" ? translationResult : mermaidData || quizData?.length) ? (
+        {(mode === "snippet" ? translationResult : mermaidData) ? (
           <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
             {saveNotice && <span role="status" className="text-xs text-text-muted">{saveNotice}</span>}
             <button type="button" onClick={() => void saveStudyNote()} disabled={isSaving || authLoading}
@@ -747,7 +738,7 @@ export default function Home() {
                       按需学习
                     </p>
                     <p className="mt-1 text-xs text-text-light">
-                      {mode === "snippet" ? "先看双语对照，再按需解释原理和术语。" : "分别生成知识导图和三语小测。"}
+                      {mode === "snippet" ? "先看双语对照，再按需解释原理和术语。" : "根据截图生成知识导图。"}
                     </p>
                   </div>
                   <div className="inline-flex items-center gap-1 rounded-full border border-card-border bg-background px-1 py-1 text-[11px] shadow-sm">
@@ -861,9 +852,8 @@ export default function Home() {
 
                 {isLoading && <OperationProgress
                   label={imageUpload ? "正在上传截图"
-                    : loadingTask === "quiz" ? "正在生成三语小测"
-                      : loadingTask === "mindmap" ? "正在生成知识导图"
-                        : loadingTask === "study" ? "正在整理原理和术语" : "正在生成译文"}
+                    : loadingTask === "mindmap" ? "正在生成知识导图"
+                      : loadingTask === "study" ? "正在整理原理和术语" : "正在生成译文"}
                   progress={imageUpload?.progress}
                   detail={imageUpload ? undefined : "已用时 " + loadingElapsed + " 秒"}
                 />}
@@ -887,11 +877,13 @@ export default function Home() {
                   )}
 
                   <div className="ml-auto flex w-full flex-wrap justify-end gap-2 sm:w-auto">
-                    <button type="button" disabled={isLoading || (mode === "snippet" && !translationResult)}
-                      onClick={() => void handleTranslate(mode === "snippet" ? "study" : "quiz")}
-                      className="rounded-xl border border-primary/20 px-4 py-2 text-sm font-medium text-primary disabled:opacity-50">
-                      {mode === "snippet" ? "讲原理和术语" : "生成三语小测"}
-                    </button>
+                    {mode === "snippet" && (
+                      <button type="button" disabled={isLoading || !translationResult}
+                        onClick={() => void handleTranslate("study")}
+                        className="rounded-xl border border-primary/20 px-4 py-2 text-sm font-medium text-primary disabled:opacity-50">
+                        讲原理和术语
+                      </button>
+                    )}
                     <button
                       id="translate-button"
                       onClick={() => void handleTranslate(mode === "snippet" ? "quick" : "mindmap")}
@@ -903,7 +895,7 @@ export default function Home() {
                           <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
                             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" />
                           </svg>
-                          {loadingTask === "study" ? "讲解生成中" : loadingTask === "quiz" ? "小测生成中" : "处理中"} · {loadingElapsed}s
+                          {loadingTask === "study" ? "讲解生成中" : "处理中"} · {loadingElapsed}s
                         </>
                       ) : (
                         <>
@@ -1146,12 +1138,11 @@ export default function Home() {
                     </div>
                     <h2 className="text-base font-semibold text-foreground">解析结果</h2>
                   </div>
-                  {(mermaidData || (quizData && quizData.length > 0)) && (
+                  {mermaidData && (
                     <div className="flex items-center gap-2">
                       <Suspense fallback={null}>
                         <ExportButton
                           mermaid={mermaidData}
-                          quiz={quizData}
                           mode={mode}
                         />
                       </Suspense>
@@ -1163,7 +1154,7 @@ export default function Home() {
                 </div>
 
                 <div className="flex-1 p-5 overflow-y-auto min-h-[400px]">
-                  {isLoading && !mermaidData && !quizData?.length ? (
+                  {isLoading && !mermaidData ? (
                     <div className="flex flex-col items-center justify-center h-full gap-4 text-text-muted">
                       <div className="relative w-12 h-12">
                         <svg className="animate-spin text-primary/30 w-full h-full" viewBox="0 0 24 24" fill="none">
@@ -1178,12 +1169,12 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      {!mermaidData && (!quizData || quizData.length === 0) && (
+                      {!mermaidData && (
                         <div className="h-full flex flex-col items-center justify-center text-text-light py-12">
                           <div className="w-16 h-16 mb-4 rounded-full bg-card-border flex items-center justify-center">
                             <BookOpen size={24} />
                           </div>
-                          <p className="text-sm">解析结果将生成知识脉络导图与随堂小测。</p>
+                          <p className="text-sm">上传课件截图后可生成知识导图。</p>
                         </div>
                       )}
 
@@ -1193,22 +1184,6 @@ export default function Home() {
                         </Suspense>
                       )}
 
-                      {quizData && quizData.length > 0 && (
-                        <Suspense fallback={<div className="text-sm text-text-muted">加载小测渲染中...</div>}>
-                          <DocumentQuizPanel
-                            sourceImages={documentFiles.map((file) => file.name)}
-                            quizData={quizData}
-                            quizLang={quizLang}
-                            onQuizLangChange={setQuizLang}
-                          />
-                        </Suspense>
-                      )}
-
-                      {mermaidData && (!quizData || quizData.length === 0) && (
-                        <div className="rounded-2xl border border-dashed border-rose-200 bg-rose-50/70 px-4 py-4 text-sm text-rose-600">
-                          本次已成功生成知识脉络导图，但随堂小测暂未生成。你可以重新点击“开始精读解析”再试一次。
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>

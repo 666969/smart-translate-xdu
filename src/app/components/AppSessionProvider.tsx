@@ -11,7 +11,6 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
-import type { QuizItem, QuizLang } from "./DocumentQuizPanel";
 import type { KeywordItem } from "./KeywordGlossary";
 import type { PdfExtractStatus } from "@/lib/pdfParser";
 import type { PdfCoverage, PdfSource } from "@/lib/pdfNavigation";
@@ -53,8 +52,6 @@ interface HomeSessionState {
   setDocumentFiles: Dispatch<SetStateAction<File[]>>;
   documentPreviewUrls: string[];
   setDocumentPreviewUrls: Dispatch<SetStateAction<string[]>>;
-  quizLang: QuizLang;
-  setQuizLang: Dispatch<SetStateAction<QuizLang>>;
   chatOpen: boolean;
   setChatOpen: Dispatch<SetStateAction<boolean>>;
   chatMessage: string;
@@ -77,8 +74,6 @@ interface HomeSessionState {
   setKeywordItemsResult: Dispatch<SetStateAction<KeywordItem[]>>;
   mermaidData: string | null;
   setMermaidData: Dispatch<SetStateAction<string | null>>;
-  quizData: QuizItem[] | null;
-  setQuizData: Dispatch<SetStateAction<QuizItem[] | null>>;
   errorMessage: string | null;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
 }
@@ -138,7 +133,6 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
   const [snippetPreviewUrl, setSnippetPreviewUrl] = useState<string | null>(null);
   const [documentFiles, setDocumentFiles] = useState<File[]>([]);
   const [documentPreviewUrls, setDocumentPreviewUrls] = useState<string[]>([]);
-  const [quizLang, setQuizLang] = useState<QuizLang>("zh");
   const [homeChatOpen, setHomeChatOpen] = useState(false);
   const [homeChatMessage, setHomeChatMessage] = useState("");
   const [homeChatMessages, setHomeChatMessages] = useState<SessionChatMessage[]>([]);
@@ -150,7 +144,6 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
   const [keywordsResult, setKeywordsResult] = useState<string | null>(null);
   const [keywordItemsResult, setKeywordItemsResult] = useState<KeywordItem[]>([]);
   const [mermaidData, setMermaidData] = useState<string | null>(null);
-  const [quizData, setQuizData] = useState<QuizItem[] | null>(null);
   const [homeErrorMessage, setHomeErrorMessage] = useState<string | null>(null);
 
   const [pdfDetails, setPdfDetails] = useState<PdfDetails>(emptyPdfDetails);
@@ -189,8 +182,6 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
         setDocumentFiles,
         documentPreviewUrls,
         setDocumentPreviewUrls,
-        quizLang,
-        setQuizLang,
         chatOpen: homeChatOpen,
         setChatOpen: setHomeChatOpen,
         chatMessage: homeChatMessage,
@@ -213,8 +204,6 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
         setKeywordItemsResult,
         mermaidData,
         setMermaidData,
-        quizData,
-        setQuizData,
         errorMessage: homeErrorMessage,
         setErrorMessage: setHomeErrorMessage,
       },
@@ -283,8 +272,6 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
       pdfFile,
       pdfPages,
       pdfUrl,
-      quizData,
-      quizLang,
       scanPageSelection,
       snippetFile,
       snippetPreviewUrl,

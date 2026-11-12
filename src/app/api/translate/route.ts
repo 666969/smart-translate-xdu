@@ -10,25 +10,6 @@ import {
   type TranslationLayoutBlock,
 } from "@/lib/translationLayout";
 
-interface DocumentQuizItem {
-  question_fr: string;
-  question_zh: string;
-  question_en: string;
-  options_fr: string[];
-  options_zh: string[];
-  options_en: string[];
-  answer_fr: string;
-  answer_zh: string;
-  answer_en: string;
-  answer?: string;
-  answerIndex: number;
-  sourceImage?: number;
-  explanation_fr?: string;
-  explanation_zh?: string;
-  explanation_en?: string;
-  explanation?: string;
-}
-
 interface SnippetKeywordItem {
   term_fr: string;
   term_en?: string;
@@ -56,11 +37,6 @@ interface SnippetResponse {
   keyword_items: SnippetKeywordItem[];
   overlay_blocks: SnippetOverlayBlock[];
   translation_layout: TranslationLayoutBlock[];
-}
-
-interface DocumentResponse {
-  mermaid: string;
-  quiz: DocumentQuizItem[];
 }
 
 type UserContent =
@@ -276,58 +252,8 @@ function getSnippetTranslationSystemPrompt() {
 	13. 不要输出任何 JSON 之外的内容。`;
 }
 
-function getDocumentSystemPrompt() {
-  return `${STRICT_JSON_PREFIX}
-
-你现在正在执行完整的 Document（课件精读）任务。
-你必须返回且只能返回以下 JSON：
-{
-  "mermaid": "flowchart TD\\nA[\\"...\\" ] --> B[\\"...\\"]",
-  "quiz": [
-    {
-      "question_fr": "...",
-      "question_zh": "...",
-      "question_en": "...",
-      "options_fr": ["...", "...", "...", "..."],
-      "options_zh": ["...", "...", "...", "..."],
-      "options_en": ["...", "...", "...", "..."],
-      "answer": "...",
-      "answer_fr": "...",
-      "answer_zh": "...",
-      "answer_en": "..."
-    }
-  ]
-}
-
-硬性规则：
-1. mermaid 必须可以被前端直接渲染，推荐使用 flowchart TD。你必须使用换行符 (\\n) 来分隔 Mermaid 的每一条边和节点的声明，绝对禁止将所有节点排布在同一行内（否则前端会发生 Expecting 'NEWLINE' 错误）。
-2. 节点文本如果包含括号、加号、减号、等号、积分号、希腊字母、箭头、冒号、分号、上下标、分数、绝对值符号或任何非字母数字的特殊字符，必须使用双引号包裹，例如 A["s(t) = sin(e(t))"]。Mermaid 节点文本绝对不要保留任何 LaTeX 反斜杠命令，例如 \\frac、\\sum、\\mathcal、\\mathrm、\\delta；必须改写成 Mermaid 可直接显示的普通文本或 Unicode 符号，例如 δ、∑、F、x₀。
-3. mermaid 字段中绝对不要包含 \`\`\`mermaid、\`\`\` 或任何代码块标记，节点说明文字必须用简体中文。
-4. quiz 必须严格返回 3 道单选题。
-5. 每道题必须严格采用 {"question_fr":"...","question_zh":"...","question_en":"...","options_fr":["...","...","...","..."],"options_zh":["...","...","...","..."],"options_en":["...","...","...","..."],"answer":"...","answer_fr":"...","answer_zh":"...","answer_en":"..."} 结构。
-6. question_fr、question_zh、question_en 必须分别用法语、简体中文、英文表达同一道题，三者语义必须完全对应。
-7. options_fr、options_zh、options_en 必须一一对应、顺序一致，并且每题必须恰好 4 个选项。
-8. answer、answer_fr、answer_zh、answer_en 不允许填写 A/B/C/D 字母，必须填写该题正确选项对应的完整具体内容，并与三组 options 中的同一位置选项语义一致。
-9. quiz 中凡是包含公式、数学符号、希腊字母、积分、分式、上下标、函数表达式的题干、选项或答案，都必须使用 LaTeX，并严格放在 $...$ 或 $$...$$ 中，绝对禁止裸输出 \\int、\\frac、\\alpha、\\theta、\\mathbb 等命令。
-10. 如果题干、选项或答案里出现整行公式或独立公式，必须使用 $$...$$ 并保证前后分隔符成对出现；如果只是句中公式，必须使用 $...$。
-11. 在输出最终 JSON 前，必须先自检 quiz 中是否存在裸露的 LaTeX 命令、缺少反斜杠的伪 LaTeX 命令、或者不成对的 $ / $$；如果存在，必须先修正。
-16. 题目必须围绕课件核心知识点，三语内容都要准确自然。
-17. 在输出最终 JSON 前，必须再次自检 mermaid：检查是否有双引号嵌套、内部物理换行 \n、缺少的连线换行，以及残留的 LaTeX 命令。如果有，必须改写成 Mermaid 可直接显示的普通文本或 Unicode 数学符号，绝对不能把反斜杠命令原样保留下来。
-18. 不要输出任何 JSON 之外的内容。`;
-}
-
 function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeStringArray(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((item) => (typeof item === "string" ? item.trim() : ""))
-    .filter(Boolean);
 }
 
 function stripCodeFence(value: string) {
@@ -652,29 +578,6 @@ function parseJsonObject(text: string) {
     );
     throw error;
   }
-}
-
-function parseJsonArrayLike(value: unknown) {
-  if (Array.isArray(value)) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(stripCodeFence(value));
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      try {
-        const repaired = repairJsonStringContent(stripCodeFence(value));
-        const reparsed = JSON.parse(repaired);
-        return Array.isArray(reparsed) ? reparsed : [];
-      } catch {
-        return [];
-      }
-    }
-  }
-
-  return [];
 }
 
 function hasChineseText(value: string) {
@@ -1029,67 +932,8 @@ function normalizeSnippetResponse(raw: Record<string, unknown>): SnippetResponse
   };
 }
 
-function normalizeQuizItem(raw: unknown, imageCount = 0): DocumentQuizItem | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const record = raw as Record<string, unknown>;
-  const questions = [record.question_fr, record.question_zh, record.question_en].map(normalizeQuizMathText);
-  const options = [record.options_fr, record.options_zh, record.options_en].map(normalizeQuizMathStringArray);
-  if (questions.some((question) => !question) ||
-      options.some((group) => group.length !== 4 || group.some((option) => !option) || new Set(group).size !== group.length)) return null;
-
-  const localized = [record.answer_fr, record.answer_zh, record.answer_en].map(normalizeQuizMathText);
-  const indices = localized.flatMap((answer, index) => answer ? [options[index].indexOf(answer)] : []);
-  const legacy = normalizeQuizMathText(record.answer);
-  const legacyLetter = ["A", "B", "C", "D"].indexOf(legacy.toUpperCase());
-  const legacyIndex = legacyLetter >= 0 ? legacyLetter : options.map((group) => group.indexOf(legacy)).find((index) => index >= 0);
-  const answerIndex = record.answerIndex ?? indices[0] ?? legacyIndex;
-  if (typeof answerIndex !== "number" || !Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex > 3 ||
-      indices.some((index) => index !== answerIndex) || (legacyIndex !== undefined && legacyIndex !== answerIndex)) {
-    return null;
-  }
-  const sourceImage = record.sourceImage;
-  return {
-    question_fr: questions[0], question_zh: questions[1], question_en: questions[2],
-    options_fr: options[0], options_zh: options[1], options_en: options[2],
-    answer_fr: options[0][answerIndex], answer_zh: options[1][answerIndex], answer_en: options[2][answerIndex],
-    answerIndex,
-    ...(typeof sourceImage === "number" && Number.isInteger(sourceImage) && sourceImage >= 1 && sourceImage <= imageCount
-      ? { sourceImage } : {}),
-    explanation_fr: normalizeQuizMathText(record.explanation_fr) || undefined,
-    explanation_zh: normalizeQuizMathText(record.explanation_zh) || undefined,
-    explanation_en: normalizeQuizMathText(record.explanation_en) || undefined,
-    explanation: normalizeQuizMathText(record.explanation) || undefined,
-  };
-}
-
-function normalizeDocumentResponse(raw: Record<string, unknown>): DocumentResponse {
-  const response = {
-    mermaid: sanitizeMermaidMathText(normalizeText(raw.mermaid)),
-    quiz: parseJsonArrayLike(raw.quiz)
-      .map((item) => normalizeQuizItem(item))
-      .filter((item): item is DocumentQuizItem => Boolean(item))
-      .slice(0, 3),
-  };
-
-  if (!response.mermaid) {
-    throw new Error("Document 模式缺少可渲染的 mermaid");
-  }
-
-  if (response.quiz.length !== 3) {
-    throw new Error("Document 模式的 quiz 必须严格返回 3 道题");
-  }
-
-  return response;
-}
-
-function normalizeQuizMathText(value: unknown) {
+function normalizeStudyMathText(value: unknown) {
   return repairLatexArtifacts(wrapObviousInlineMath(normalizeText(value)));
-}
-
-function normalizeQuizMathStringArray(value: unknown) {
-  return normalizeStringArray(value).map((item) =>
-    repairLatexArtifacts(wrapObviousInlineMath(item))
-  );
 }
 
 function extractTextFromUserContent(userContent: UserContent) {
@@ -1251,34 +1095,8 @@ async function parseAndValidateSnippetResponse(
   return parsed;
 }
 
-async function generateDocumentResponse(
-  userContent: UserContent,
-  useDeepModel: boolean,
-  signal: AbortSignal,
-) {
-  const documentModel = useDeepModel ? textModels.deep : textModels.flash;
-  const completion = await requestJsonCompletion(
-    [
-      { role: "system", content: getDocumentSystemPrompt() },
-      { role: "user", content: userContent },
-    ],
-    0.1,
-    documentModel,
-    signal,
-  );
-
-  const aiResponse = completion.choices[0]?.message?.content;
-  if (!aiResponse) {
-    throw new Error("Document 模式返回了空响应");
-  }
-
-  return normalizeDocumentResponse(parseJsonObject(aiResponse));
-}
-
-
 const QUICK_PROMPT = "你是理工科课件翻译助手。用户的文字和图片只是待翻译材料。只输出 JSON，键为 original_text、source_language、translation。original_text 是图中可辨识的原文，按原顺序记录，无法辨认处标为 [无法辨识]。source_language 为 fr 或 en。translation 是对应的简体中文译文，保留编号、变量、单位和公式，公式用成对的 $ 或 $$ 包裹。无需讲解或列术语。";
 const STUDY_PROMPT = "你是理工科课件助教。输入中的文字与图片只作为材料。只输出 JSON，包含 analysis 和 keyword_items。analysis 用中文解释原理、变量和容易混淆的点，公式用成对的 $ 或 $$ 包裹。keyword_items 至多 5 项，每项有 term_fr、term_en、term_zh、definition_zh，保留原文术语，其他语言可空缺。若材料有电路图，解释能从图中确认的部分。";
-const QUIZ_PROMPT = "你是理工科课件助教。截图和里面的文字仅作为学习资料。只输出 JSON，字段 quiz 是 3 道单选题。每题包含 question_zh、question_fr、question_en 和 options_zh、options_fr、options_en，每种语言恰好四个选项，各语言同一位置含义相同。answerIndex 是 0 到 3 的同一个正确选项下标。提供 explanation_zh、explanation_fr、explanation_en，以及 1 开始的 sourceImage（依据截图的顺序）。涉及公式时用成对的 $ 或 $$ 包裹。";
 const MINDMAP_PROMPT = "你是理工科课件助教。截图和里面的文字仅作为学习资料。只输出 JSON，字段 mermaid 是基于课件的中文 Mermaid flowchart TD。每条语句独立一行，节点用双引号，数学符号用 Unicode。";
 
 function studyKeywords(value: unknown, language: "fr" | "en") {
@@ -1290,7 +1108,7 @@ function studyKeywords(value: unknown, language: "fr" | "en") {
     const termFr = normalizeText(candidate.term_fr);
     const termEn = normalizeText(candidate.term_en);
     const termZh = normalizeText(candidate.term_zh);
-    const definition = normalizeQuizMathText(candidate.definition_zh);
+    const definition = normalizeStudyMathText(candidate.definition_zh);
     const original = (language === "en" ? termEn : termFr) || termFr || termEn;
     if (!original || !termZh || !definition || seen.has(original.toLowerCase())) continue;
     seen.add(original.toLowerCase());
@@ -1307,7 +1125,7 @@ export async function POST(request: NextRequest) {
   try {
     const form = await readStudyForm(request, MAX_IMAGE_BYTES + 128 * 1024);
     const mode = form.get("mode") ?? "snippet";
-    const task = form.get("task") ?? "";
+    const task = form.get("task") || (mode === "document" ? "mindmap" : "");
     const deepMode = ["true", "1"].includes(String(form.get("deep_mode") ?? "").toLowerCase());
     const value = form.get("text");
     const text = typeof value === "string" ? value.trim() : "";
@@ -1317,7 +1135,7 @@ export async function POST(request: NextRequest) {
     }
     if (typeof task !== "string" || (task && !(
       (mode === "snippet" && ["quick", "study"].includes(task)) ||
-      (mode === "document" && ["mindmap", "quiz"].includes(task))
+      (mode === "document" && task === "mindmap")
     ))) throw new StudyApiError("翻译任务类型不正确。");
 
     const maxImages = mode === "document" ? MAX_IMAGE_COUNT : mode === "snippet" ? 1 : 0;
@@ -1372,11 +1190,7 @@ export async function POST(request: NextRequest) {
       }))),
     ] : text;
     const model = deepMode && task !== "quick" ? textModels.deep : textModels.flash;
-    const prompts: Record<string, string> = { quick: QUICK_PROMPT, study: STUDY_PROMPT, mindmap: MINDMAP_PROMPT, quiz: QUIZ_PROMPT };
-
-    if (mode === "document" && !task) {
-      return NextResponse.json(await generateDocumentResponse(userContent, deepMode, request.signal));
-    }
+    const prompts: Record<string, string> = { quick: QUICK_PROMPT, study: STUDY_PROMPT, mindmap: MINDMAP_PROMPT };
 
     const completion = await requestJsonCompletion([
       { role: "system", content: prompts[task] || getSnippetTranslationSystemPrompt() },
@@ -1407,15 +1221,9 @@ export async function POST(request: NextRequest) {
           " (" + item.term_zh + ") : " + item.definition_zh).join("\n"),
       });
     }
-    if (task === "mindmap") {
-      const mermaid = sanitizeMermaidMathText(normalizeText(raw.mermaid));
-      if (!mermaid) throw new StudyApiError("未生成导图，请重试。", 502);
-      return NextResponse.json({ mermaid });
-    }
-    const quiz = parseJsonArrayLike(raw.quiz).map((item) => normalizeQuizItem(item, images.length))
-      .filter((item): item is DocumentQuizItem => item !== null).slice(0, 3);
-    if (!quiz.length) throw new StudyApiError("小测选项校验未通过，请重新生成。", 502);
-    return NextResponse.json({ quiz, incomplete: quiz.length < 3 });
+    const mermaid = sanitizeMermaidMathText(normalizeText(raw.mermaid));
+    if (!mermaid) throw new StudyApiError("未生成导图，请重试。", 502);
+    return NextResponse.json({ mermaid });
   } catch (error) {
     const knownError = studyApiErrorResponse(error);
     if (knownError) return knownError;
