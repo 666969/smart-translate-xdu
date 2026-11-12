@@ -181,6 +181,21 @@ function mergeFormulaContinuations(lines: string[]) {
   return result;
 }
 
+const tableSeparator = /^[ \t]{0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)+\|?[ \t]*$/u;
+const inlineTableMath = /(\x60+)[^\n]*?\1|(?<![\\$])(\${1,2})(?!\$)([^$\n]+?)\2(?!\$)/gu;
+
+function normalizeMarkdownLines(text: string) {
+  const lines = mergeFormulaContinuations(text.split("\n"));
+  let inTable = false;
+  return lines.map((line, index) => {
+    inTable = line.includes("|") && (inTable || tableSeparator.test(lines[index + 1] ?? ""));
+    if (!inTable) return normalizeFormulaLine(line);
+    // A math pipe in a table cell must not be interpreted as a column separator.
+    return normalizeInlineDelimiters(line).replace(inlineTableMath, (match, code, delimiter, formula) =>
+      code ? match : delimiter + formula.replace(/(?<!\\)\|/gu, "\\vert ") + delimiter);
+  }).join("\n");
+}
+
 export function normalizeLatexContent(content: string) {
   const clean = content.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, "").replace(/\r\n?/gu, "\n");
   return splitFencedMarkdown(clean).map((section) => {
@@ -192,7 +207,7 @@ export function normalizeLatexContent(content: string) {
       return "\n\n" + displayFormula(display ?? environment) + "\n\n";
     }).replace(/^([ \t]*)(?:\\+\${2}|(?:\\+\$){2})[ \t]*$/gmu, (_, indent: string) => indent + "$$");
     return splitFencedMarkdown(converted).map(({ text, fenced }) =>
-      fenced ? text : mergeFormulaContinuations(text.split("\n")).map(normalizeFormulaLine).join("\n")
+      fenced ? text : normalizeMarkdownLines(text)
     ).join("\n");
   }).join("\n");
 }

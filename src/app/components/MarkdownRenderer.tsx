@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
@@ -68,8 +69,17 @@ export default function MarkdownRenderer({
       [&_.katex-display]:overflow-x-auto [&_.katex-display]:overflow-y-hidden
     ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
+        components={{
+          table: ({ children }) => (
+            <div className="my-3 max-w-full overflow-x-auto rounded-lg border border-card-border bg-white">
+              <table className="w-full border-collapse text-left text-sm [&_thead]:bg-slate-100 [&_th]:border-b [&_th]:border-card-border [&_th]:px-3 [&_th]:py-2 [&_th]:font-semibold [&_td]:border-b [&_td]:border-card-border [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_tbody_tr:last-child_td]:border-b-0">
+                {children}
+              </table>
+            </div>
+          ),
+        }}
       >
         {processedContent}
       </ReactMarkdown>

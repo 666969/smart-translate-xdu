@@ -7,6 +7,7 @@ import OperationProgress from "./OperationProgress";
 import { emptyPdfDetails, useAppSession } from "./AppSessionProvider";
 import { getLessonRecord, saveLessonRecord, type LessonRecord } from "@/lib/db";
 import { findPdfPageRequest, pdfPageTitle, resolvePdfPages, type PdfCoverage, type PdfSource } from "@/lib/pdfNavigation";
+import { cleanPdfSummary } from "@/lib/pdfSummary";
 import { buildPdfStudyNoteMarkdown, downloadMarkdownFile } from "@/lib/markdownExport";
 import { isPdfFile, MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES, MAX_PDF_BYTES, MAX_SCAN_PAGES, MAX_SCAN_REQUEST_BYTES } from "@/lib/studyLimits";
 import { useLesson } from "@/hooks/useLesson";
@@ -139,7 +140,7 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
     try {
       const data = await askPdf<SummaryAnswer>({ action: "summarize", pdfPages: pages, pageLabels: labels, deepMode }, signal);
       if (signal.aborted) return;
-      setSummary(data.summary);
+      setSummary(cleanPdfSummary(data.summary) || null);
       setDetails((previous) => ({ ...previous, coverage: data.coverage }));
     } catch (error) {
       if (!signal.aborted) setSummaryError(error instanceof Error ? error.message : "摘要生成失败。");
@@ -171,7 +172,7 @@ export default function PdfWorkspace({ embedded = false }: { embedded?: boolean 
     setPdfExtractStatus("idle");
     setPdfExtractReason(null);
     setDetails({ ...emptyPdfDetails, ownerId, activePage: prior?.page ?? 1, coverage: prior?.coverage ?? null, recordId: record?.id });
-    setSummary(prior?.summary ?? null);
+    setSummary(prior?.summary ? cleanPdfSummary(prior.summary) || null : null);
     setChatMessages(prior?.messages ?? []);
     setChatInput("");
     setScanPageSelection("");
