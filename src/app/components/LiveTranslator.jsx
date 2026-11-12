@@ -54,9 +54,25 @@ async function requestResult(url, form, signal) {
   const response = await fetch(url, { method: "POST", body: form, signal });
   const data = await response.json().catch(() => null);
   if (!response.ok || !data) {
-    throw new Error(data?.error || "请求失败，请稍后重试。");
+    throw Object.assign(new Error(data?.error || "请求失败，请稍后重试。"), { status: response.status });
   }
   return data;
+}
+
+async function requestCaption(form, signal) {
+  const translate = () => requestResult(
+    "/api/translate",
+    form,
+    AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
+  );
+  try {
+    return await translate();
+  } catch (error) {
+    const transient = error instanceof TypeError || error?.name === "TimeoutError" ||
+      [408, 500, 502, 504].includes(error?.status);
+    if (signal.aborted || !transient) throw error;
+    return translate();
+  }
 }
 
 function snapshot(run, isListening) {
@@ -216,15 +232,16 @@ function LiveSession({ ownerId, lesson, loading }) {
       form.set("mode", "live");
       form.set("text", line.originalText);
       form.set("language", run.language);
-      const signal = AbortSignal.any([run.controller.signal, AbortSignal.timeout(12_000)]);
-      void requestResult("/api/translate", form, signal).then((data) => {
+      void requestCaption(form, run.controller.signal).then((data) => {
         if (run.controller.signal.aborted) return;
         if (!data.translation?.trim()) throw new Error("译文为空");
         setTranslationIssue("");
         updateLine(run, line.id, { translation: data.translation.trim(), status: "success" });
       }).catch((failure) => {
         if (run.controller.signal.aborted) return;
-        setTranslationIssue(failure instanceof Error ? failure.message : "译文暂时无法生成。");
+        const interrupted = failure instanceof TypeError || failure?.name === "TimeoutError";
+        const message = failure instanceof Error ? failure.message : "译文暂时无法生成。";
+        setTranslationIssue(interrupted ? "连接翻译服务超时，原文已保留，可重试翻译。" : message);
         updateLine(run, line.id, { status: "error" });
       }).finally(() => {
         run.translating -= 1;
