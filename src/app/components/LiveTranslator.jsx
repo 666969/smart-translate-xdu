@@ -583,12 +583,12 @@ function LiveSession({ ownerId, lesson, loading }) {
       <main className="mx-auto max-w-[1440px] space-y-4 px-4 py-6 lg:px-10">
         <section className="animate-fade-in-up rounded-2xl border border-card-border bg-white p-4 lg:p-5">
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Mic className="text-primary" />随堂同传</h1>
-          <p className="mt-2 text-sm text-text-muted">识别到的外语分句送入 DeepSeek，中文字幕随生成逐步显示。</p>
+          <p className="mt-2 text-sm text-text-muted">实时显示课堂原文和中文字幕。</p>
           <p className="mt-2 text-sm text-text-muted">
             {usesCloudStudy(ownerId)
-              ? "课堂文字记录每 20 秒保存到云端，也可手动保存。"
-              : cloudStudyEnabled ? "可以先以访客身份跟听，登录后保存文字记录到云端。"
-                : "先显示法语或英语原文，再补中文字幕。文字记录会保存到本浏览器的课程档案。"}
+              ? "字幕每 20 秒自动保存到云端，也可手动保存。"
+              : cloudStudyEnabled ? "登录后可保存字幕到云端，课后随时回看。"
+                : "字幕会保存到当前浏览器的课程档案中。"}
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button className={button} aria-pressed={inputSource === "mic"} disabled={busy} onClick={() => setInputSource("mic")}><Mic size={16} />麦克风</button>
